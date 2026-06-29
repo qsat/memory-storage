@@ -7,13 +7,23 @@
   "workspaces": [
     "packages/*"
   ],
+  "bin": {
+    "memory-storage": "packages/cli/dist/cli.js"
+  },
+  "files": [
+    "packages/cli/dist/cli.js"
+  ],
   "scripts": {
     "build": "npm run build --workspace memory-storage && npm run build --workspace memory-storage-cli",
-    "build:release": "npm run build && node scripts/build-release.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run build --workspace memory-storage && npm run typecheck --workspaces --if-present",
     "check": "npm run build --workspace memory-storage && npm run check --workspace memory-storage-check",
     "cli": "npm run build --workspace memory-storage && npm run start --workspace memory-storage-cli --"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.4.0",
+    "better-sqlite3": "^11.8.1",
+    "sqlite-vec": "^0.1.6"
   },
   "engines": {
     "node": ">=20.0.0"

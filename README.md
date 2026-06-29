@@ -164,9 +164,11 @@ memory-storage put typescript -c "# TypeScript\n\nJS に型を加えた言語" -
 memory-storage search "型推論" --db ~/memory.db --json
 ```
 
-> 仕組み: `release` ブランチのルートは、コア込みでバンドルした `cli.js` と、依存が
-> ネイティブ 3 パッケージだけの `package.json`（bin: `memory-storage`）からなる自己完結パッケージです。
-> `main` への push ごとに `.github/workflows/release.yml` が再ビルドして更新します。
+> 仕組み: `.github/workflows/release.yml` が `main` への push ごとに、コア込みでバンドルした
+> `packages/cli/dist/cli.js` を作って `release` ブランチにコミットします。ルート `package.json` は
+> `bin: { "memory-storage": "packages/cli/dist/cli.js" }` と `files` 許可リストを持つので、
+> インストール時の tarball は `package.json` ＋ そのバンドルだけ（モノレポ全体は含まれません）。
+> 実行時に必要なネイティブ 3 依存はルートの `dependencies` として宣言してあり、npm が自動取得します。
 
 ### リポジトリ内で実行（開発時・ビルド不要、tsx 経由）
 
