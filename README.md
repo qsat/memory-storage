@@ -65,6 +65,27 @@ npm run check                 # メモリ上の DB で実行
 npm run check -- ./memory.db  # ファイルに永続化（後で中身を確認できる）
 ```
 
+#### 埋め込みモデルについて（重要）
+
+transformers.js は **ONNX 形式**のモデルが必要です。Ruri v3 の公式リポジトリ
+（`cl-nagoya/ruri-v3-310m`）は PyTorch 版のため、デフォルトではコミュニティの ONNX 変換
+（`sirasagi62/ruri-v3-310m-ONNX`）を使用します。環境に合わせて環境変数で差し替えられます。
+
+```bash
+# 別の ONNX リポジトリ / 量子化を使う
+MEMORY_EMBEDDING_MODEL=keitokei1994/ruri-v3-310m-onnx \
+MEMORY_EMBEDDING_DTYPE=fp32 \
+npm run check
+```
+
+| 環境変数 | 既定値 | 説明 |
+|---|---|---|
+| `MEMORY_EMBEDDING_MODEL` | `sirasagi62/ruri-v3-310m-ONNX` | HuggingFace の ONNX リポジトリ ID |
+| `MEMORY_EMBEDDING_DTYPE` | `q8` | 量子化（`fp32` / `fp16` / `q8` など。repo に存在するもの） |
+
+> 出力次元は 768 に固定です（全ベクトルに焼き付くため）。モデルを変える場合も 768 次元のものを
+> 選び、既存データがあるときは全件 re-embed が必要です（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) のガードレール参照）。
+
 ### 3. ビルド（配布用 dist の生成・任意）
 
 ```bash
