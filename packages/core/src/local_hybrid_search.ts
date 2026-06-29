@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -97,28 +98,58 @@ const RRF_K = 60;
 const DEFAULT_TOP_K = 10;
 
 // ---------------------------------------------------------------------------
-// Model cache location
+// Path / model cache location
 // ---------------------------------------------------------------------------
 
-/** Resolve `~`-prefixed paths against the user's home directory. */
-function expandHome(p: string): string {
+/**
+ * Resolve a user-supplied path:
+ * - `~` / `~/...`  → expanded against the home directory
+ * - absolute       → used as-is
+ * - otherwise      → relative to the directory the command was run from
+ *   (INIT_CWD, which npm sets to the invocation dir; falls back to cwd)
+ */
+export function resolveUserPath(p: string): string {
   if (p === "~") return os.homedir();
   if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
-  return p;
+  if (path.isAbsolute(p)) return p;
+  return path.resolve(process.env.INIT_CWD ?? process.cwd(), p);
 }
 
 /**
  * Where the embedding model is cached on disk. Defaults to a stable directory
  * outside the project so it survives `npm install` / removing node_modules.
- * Override with MEMORY_MODEL_CACHE.
+ * Override with MEMORY_MODEL_CACHE (relative values resolve like above).
  */
-export const MODEL_CACHE_DIR = expandHome(
+export const MODEL_CACHE_DIR = resolveUserPath(
   process.env.MEMORY_MODEL_CACHE ??
     path.join(os.homedir(), ".cache", "memory-storage")
 );
 
 // transformers.js has no env var for this, so set it before any model load.
 transformersEnv.cacheDir = MODEL_CACHE_DIR;
+
+/**
+ * Ensure the model cache dir is usable before downloading. We only auto-create
+ * directories under `~/.cache`; anywhere else the directory must already exist,
+ * otherwise we error out — so a typo'd MEMORY_MODEL_CACHE can't silently
+ * scatter hundreds of MB of model files into an arbitrary location.
+ */
+function ensureModelCacheDir(): void {
+  if (fs.existsSync(MODEL_CACHE_DIR)) return;
+  const cacheRoot = path.join(os.homedir(), ".cache");
+  const underCacheRoot =
+    MODEL_CACHE_DIR === cacheRoot ||
+    MODEL_CACHE_DIR.startsWith(cacheRoot + path.sep);
+  if (underCacheRoot) {
+    fs.mkdirSync(MODEL_CACHE_DIR, { recursive: true });
+    return;
+  }
+  throw new Error(
+    `model cache directory does not exist: ${MODEL_CACHE_DIR}\n` +
+      `Refusing to create directories outside ~/.cache. Create it first ` +
+      `(e.g. mkdir -p "${MODEL_CACHE_DIR}") or set MEMORY_MODEL_CACHE under ~/.cache.`
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Embedder (singleton)
@@ -148,6 +179,7 @@ export function onModelProgress(cb: (p: ModelProgress) => void): void {
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!_embedder) {
+    ensureModelCacheDir();
     _embedder = await pipeline("feature-extraction", EMBEDDING_MODEL, {
       dtype: EMBEDDING_DTYPE,
       progress_callback: _progressCallback as

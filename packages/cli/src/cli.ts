@@ -15,12 +15,11 @@
  *
  * Global: --db <path> (or env MEMORY_DB, default "memory.db"), --json, --help
  */
-import os from "node:os";
-import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   MemoryStore,
   onModelProgress,
+  resolveUserPath,
   MODEL_CACHE_DIR,
   type SourceInput,
   type ModelProgress,
@@ -58,19 +57,9 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-/**
- * Resolve the --db path. Relative paths resolve against the directory the user
- * ran the command from, not the process cwd: `npm run` switches cwd into the
- * workspace package, but sets INIT_CWD to the original invocation directory.
- * When run as the `memory` bin directly, INIT_CWD is unset and cwd is correct.
- */
+/** Resolve the --db path (relative to the invocation dir); keep ":memory:". */
 function resolveDbPath(raw: string): string {
-  if (raw === ":memory:") return raw;
-  let p = raw;
-  if (p === "~") p = os.homedir();
-  else if (p.startsWith("~/")) p = path.join(os.homedir(), p.slice(2));
-  if (path.isAbsolute(p)) return p;
-  return path.resolve(process.env.INIT_CWD ?? process.cwd(), p);
+  return raw === ":memory:" ? raw : resolveUserPath(raw);
 }
 
 /** Parse a --source value: "kind:uri" shorthand or a JSON object. */
