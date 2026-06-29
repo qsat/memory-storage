@@ -23,23 +23,31 @@ export interface PutOptions {
   epistemic?: "fact" | "inference" | "hypothesis";
 }
 
-/** A wiki page: the canonical full-markdown record, addressed by slug. */
+/**
+ * A wiki page: the canonical full-markdown record, addressed by slug.
+ * `id` is a UUIDv7 — time-ordered, so sorting by id gives chronological order.
+ */
 export interface PageRow {
-  id: number;
+  id: string;
   slug: string;
   content: string;
   status: "live" | "stale";
   epistemic: "fact" | "inference" | "hypothesis";
-  superseded_by: number | null;
+  superseded_by: string | null;
   created_at: number;
   last_confirmed_at: number;
   superseded_at: number | null;
 }
 
-/** A derived chunk of a page (the unit of embedding / retrieval). */
+/**
+ * A derived chunk of a page (the unit of embedding / retrieval).
+ * `id` is the integer rowid shared with the fts5 / vec0 indexes; `uuid` is the
+ * stable external id (UUIDv7). `pageId` is the parent page's UUIDv7.
+ */
 export interface ChunkRow {
   id: number;
-  pageId: number;
+  uuid: string;
+  pageId: string;
   ordinal: number;
   headingPath: string | null;
   text: string;
@@ -48,7 +56,7 @@ export interface ChunkRow {
 /** A chunk-level search hit, carrying its parent page's metadata. */
 export interface SearchResult {
   chunkId: number;
-  pageId: number;
+  pageId: string;
   slug: string;
   ordinal: number;
   headingPath: string | null;
@@ -71,10 +79,10 @@ export interface EvidenceRow {
 
 /** One version of a page, as returned by the history query. */
 export interface HistoryRow {
-  id: number;
+  id: string;
   status: "live" | "stale";
   epistemic: "fact" | "inference" | "hypothesis";
-  superseded_by: number | null;
+  superseded_by: string | null;
   created_at: number;
   superseded_at: number | null;
 }

@@ -4,6 +4,7 @@
  */
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
+import { uuidv7 } from "uuidv7";
 import { applySchema } from "./schema.js";
 import { prepareStatements, type Statements } from "./statements.js";
 import { embed, DOC_PREFIX, QUERY_PREFIX } from "./model.js";
@@ -43,9 +44,9 @@ export class MemoryStore {
    * it is chunked for indexing, and embeddings of unchanged chunks are reused
    * from the previous version (only changed/new chunks are re-embedded).
    *
-   * @returns the new page version's id
+   * @returns the new page version's id (UUIDv7)
    */
-  async put(slug: string, opts: PutOptions): Promise<number> {
+  async put(slug: string, opts: PutOptions): Promise<string> {
     const { content, sources, epistemic = "fact" } = opts;
     if (!content.trim()) throw new Error("put: content must not be empty");
 
@@ -56,7 +57,7 @@ export class MemoryStore {
 
     const now = Date.now();
     const existing = this.stmts.liveIdBySlug.get({ slug }) as
-      | { id: number }
+      | { id: string }
       | undefined;
 
     // Reuse embeddings from the current live version by content hash.
@@ -96,15 +97,15 @@ export class MemoryStore {
         this.stmts.deleteChunksByPage.run({ page_id: existing.id });
       }
 
-      const newPageId = (
-        this.stmts.insertPage.get({
-          slug,
-          content,
-          epistemic,
-          created_at: now,
-          last_confirmed_at: now,
-        }) as { id: number }
-      ).id;
+      const newPageId = uuidv7();
+      this.stmts.insertPage.run({
+        id: newPageId,
+        slug,
+        content,
+        epistemic,
+        created_at: now,
+        last_confirmed_at: now,
+      });
 
       if (existing) {
         this.stmts.linkSupersession.run({
@@ -116,6 +117,7 @@ export class MemoryStore {
       for (const c of chunks) {
         const chunkId = (
           this.stmts.insertChunk.get({
+            uuid: uuidv7(),
             page_id: newPageId,
             ordinal: c.ordinal,
             heading_path: c.headingPath,
@@ -157,7 +159,7 @@ export class MemoryStore {
    * Attach (or re-confirm) a provenance source on an existing page, refreshing
    * its freshness timestamp. Throws if the page id does not exist.
    */
-  addEvidence(pageId: number, source: SourceInput): void {
+  addEvidence(pageId: string, source: SourceInput): void {
     if (!this.stmts.pageExists.get({ id: pageId })) {
       throw new Error(`addEvidence: page id ${pageId} does not exist`);
     }
@@ -188,7 +190,7 @@ export class MemoryStore {
   }
 
   /** The chunks of a page, in order (for inspection / reconstruction). */
-  getChunks(pageId: number): ChunkRow[] {
+  getChunks(pageId: string): ChunkRow[] {
     return this.stmts.getChunks.all({ page_id: pageId }) as ChunkRow[];
   }
 
@@ -251,7 +253,7 @@ export class MemoryStore {
   }
 
   /** List a page's evidence (sources), most-recently-confirmed first. */
-  getEvidence(pageId: number): EvidenceRow[] {
+  getEvidence(pageId: string): EvidenceRow[] {
     return this.stmts.getEvidence.all({ id: pageId }) as EvidenceRow[];
   }
 

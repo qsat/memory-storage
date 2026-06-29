@@ -209,9 +209,12 @@ npm run cli -- history typescript
 
 ## 公開 API
 
+> ID 体系: `page.id` は **UUIDv7**（時系列順 = 作成順にソート可能）。`chunk.id` は fts5/vec0 の
+> rowid 制約のため整数で、安定外部 ID として `chunk.uuid`（UUIDv7）を併記します。
+
 | 関数 | 役割 |
 |---|---|
-| `put(slug, { content, sources?, epistemic? })` | ページ新規 or 置換（Wiki 編集相当）。ページ id を返す |
+| `put(slug, { content, sources?, epistemic? })` | ページ新規 or 置換（Wiki 編集相当）。ページ id（UUIDv7）を返す |
 | `addEvidence(pageId, source)` | 出典追加 / 再裏付け（強化）。鮮度も更新 |
 | `resolveSlug(slug)` | 最新 live ページ（全文 content）を返す |
 | `getChunks(pageId)` | ページのチャンク一覧（ordinal 順） |
