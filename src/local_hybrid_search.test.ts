@@ -76,6 +76,12 @@ describe("MemoryStore", () => {
       expect(history[1].status).toBe("live");
     });
 
+    it("rejects empty content", async () => {
+      await expect(store.put("empty", { content: "   " })).rejects.toThrow(
+        /content must not be empty/
+      );
+    });
+
     it("attaches sources as evidence", async () => {
       const id = await store.put("sourced-fact", {
         content: "Node.js uses V8 engine",
@@ -110,6 +116,12 @@ describe("MemoryStore", () => {
       expect(evidence).toHaveLength(1);
       expect(evidence[0].uri).toBe("https://example.com/proof");
       expect(evidence[0].title).toBe("Proof page");
+    });
+
+    it("throws on non-existent knowledge id", () => {
+      expect(() =>
+        store.addEvidence(99999, { kind: "url", uri: "https://x.com" })
+      ).toThrow(/does not exist/);
     });
 
     it("updates confirmed_at on re-confirmation", async () => {
@@ -169,6 +181,12 @@ describe("MemoryStore", () => {
         expect(r.content).toBeDefined();
         expect(r.score).toBeGreaterThan(0);
       }
+    });
+
+    it("returns empty array for non-positive topK", async () => {
+      await store.put("anything", { content: "Some content here" });
+      expect(await store.hybridSearch("content", 0)).toEqual([]);
+      expect(await store.hybridSearch("content", -5)).toEqual([]);
     });
 
     it("excludes stale entries", async () => {

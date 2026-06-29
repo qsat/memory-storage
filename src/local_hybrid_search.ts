@@ -190,7 +190,13 @@ export class MemoryStore {
 
   private prepareStatements() {
     return {
-      insertKnowledge: this.db.prepare(`
+      insertKnowledge: this.db.prepare<{
+        slug: string;
+        content: string;
+        epistemic: string;
+        created_at: number;
+        last_confirmed_at: number;
+      }>(`
         INSERT INTO knowledge (slug, content, epistemic, created_at, last_confirmed_at)
         VALUES (@slug, @content, @epistemic, @created_at, @last_confirmed_at)
         RETURNING id
@@ -217,15 +223,20 @@ export class MemoryStore {
         `DELETE FROM fts_knowledge WHERE rowid = @rowid`
       ),
 
-      insertVec: this.db.prepare(
+      insertVec: this.db.prepare<[bigint, Buffer]>(
         `INSERT INTO vec_knowledge (rowid, embedding) VALUES (?, ?)`
       ),
 
-      deleteVec: this.db.prepare(
+      deleteVec: this.db.prepare<[bigint]>(
         `DELETE FROM vec_knowledge WHERE rowid = ?`
       ),
 
-      upsertSource: this.db.prepare(`
+      upsertSource: this.db.prepare<{
+        kind: string;
+        uri: string;
+        title: string | null;
+        now: number;
+      }>(`
         INSERT INTO source (kind, uri, title, ingested_at)
         VALUES (@kind, @uri, @title, @now)
         ON CONFLICT (kind, uri) DO UPDATE SET title = COALESCE(excluded.title, title)
@@ -254,8 +265,8 @@ export class MemoryStore {
         `SELECT * FROM knowledge WHERE slug = @slug AND status = 'live'`
       ),
 
-      getById: this.db.prepare<{ id: number }>(
-        `SELECT * FROM knowledge WHERE id = @id`
+      knowledgeExists: this.db.prepare<{ id: number }>(
+        `SELECT 1 FROM knowledge WHERE id = @id`
       ),
 
       ftsSearch: this.db.prepare<{ query: string; limit: number }>(
@@ -263,14 +274,18 @@ export class MemoryStore {
          ORDER BY rank LIMIT @limit`
       ),
 
-      vecSearch: this.db.prepare(
+      vecSearch: this.db.prepare<[Buffer, number]>(
         `SELECT rowid, distance FROM vec_knowledge
          WHERE embedding MATCH ? AND k = ?
          ORDER BY distance`
       ),
 
-      sourceCount: this.db.prepare<{ id: number }>(
-        `SELECT COUNT(*) AS cnt FROM evidence WHERE knowledge_id = @id`
+      // Fetch a live knowledge row together with its source count in one query.
+      getLiveSearchRow: this.db.prepare<{ id: number }>(
+        `SELECT id, slug, content, epistemic, last_confirmed_at AS lastConfirmedAt,
+                (SELECT COUNT(*) FROM evidence WHERE knowledge_id = knowledge.id)
+                  AS sourceCount
+         FROM knowledge WHERE id = @id AND status = 'live'`
       ),
 
       getEvidence: this.db.prepare<{ id: number }>(
@@ -300,6 +315,10 @@ export class MemoryStore {
     opts: PutOptions
   ): Promise<number> {
     const { content, sources, epistemic = "fact" } = opts;
+
+    if (!content.trim()) {
+      throw new Error("put: content must not be empty");
+    }
 
     const embedding = await embed(content, DOC_PREFIX);
     const now = Date.now();
@@ -359,6 +378,10 @@ export class MemoryStore {
   }
 
   addEvidence(knowledgeId: number, source: SourceInput): void {
+    if (!this.stmts.knowledgeExists.get({ id: knowledgeId })) {
+      throw new Error(`addEvidence: knowledge id ${knowledgeId} does not exist`);
+    }
+
     const now = Date.now();
     const txn = this.db.transaction(() => {
       const srcRow = this.stmts.upsertSource.get({
@@ -388,6 +411,8 @@ export class MemoryStore {
     query: string,
     topK: number = DEFAULT_TOP_K
   ): Promise<SearchResult[]> {
+    if (topK <= 0) return [];
+
     const queryEmbedding = await embed(query, QUERY_PREFIX);
     const fetchN = topK * 3;
 
@@ -428,19 +453,12 @@ export class MemoryStore {
 
     const results: SearchResult[] = [];
     for (const [id, score] of ranked) {
-      const row = this.stmts.getById.get({ id }) as KnowledgeRow | undefined;
-      if (!row || row.status !== "live") continue;
-
-      const cnt = this.stmts.sourceCount.get({ id }) as { cnt: number };
-      results.push({
-        id: row.id,
-        slug: row.slug,
-        content: row.content,
-        epistemic: row.epistemic,
-        score,
-        sourceCount: cnt.cnt,
-        lastConfirmedAt: row.last_confirmed_at,
-      });
+      const row = this.stmts.getLiveSearchRow.get({ id }) as
+        | Omit<SearchResult, "score">
+        | undefined;
+      // Indexes only hold live rows, so a miss here means a stale/deleted entry.
+      if (!row) continue;
+      results.push({ ...row, score });
     }
     return results;
   }
