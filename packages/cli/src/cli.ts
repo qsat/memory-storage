@@ -26,29 +26,89 @@ import {
   type ModelProgress,
 } from "memory-storage";
 
-const HELP = `memory-storage — local hybrid-search / RAG memory CLI
+const HELP = `memory-storage — local hybrid-search / RAG memory for an LLM wiki
 
-Usage:
-  memory-storage put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]
-  memory-storage search <query> [-k <topK>]      chunk-level hybrid search
-  memory-storage get <slug>                      print the page's full markdown
-  memory-storage resolve <slug>                  page id + metadata
-  memory-storage history <slug>
-  memory-storage evidence <pageId>
-  memory-storage add-evidence <pageId> -s <kind:uri> [-s ...]
+A local knowledge store. Each "page" is a Markdown document addressed by a
+stable "slug". Pages are chunked and indexed for hybrid search (keyword + vector).
+Everything runs locally; nothing leaves the machine.
 
-Options:
-  -c, --content <text>       page markdown body (put)
-  -e, --epistemic <value>    fact | inference | hypothesis (default: fact)
-  -s, --source <kind:uri>    source spec; repeatable. Also accepts JSON:
-                             '{"kind":"url","uri":"...","title":"...","locator":"..."}'
-  -k, --top-k <n>            number of search results (default: 10)
-      --db <path>            SQLite file (default: env MEMORY_DB or "memory.db")
-      --json                 machine-readable JSON output
-  -h, --help                 show this help
+USAGE
+  memory-storage <command> [args] [options]
 
-Embedding model (transformers.js, ONNX) is overridable via env:
-  MEMORY_EMBEDDING_MODEL, MEMORY_EMBEDDING_DTYPE
+FOR AGENTS (read this)
+  • Pass --json on every command for stable, machine-readable output on stdout.
+    Human/progress text (DB path, model download) only ever goes to stderr.
+  • A page is the unit you author. To UPDATE a page: 'get' its markdown, edit it,
+    then 'put' it back under the same slug — that supersedes the old version.
+  • 'put' is idempotent per slug: re-running with the same slug replaces the live
+    page (old version is kept as history). Choose a slug that names the concept.
+  • Tag what you write: set --epistemic and attach --source. Use 'fact' only with
+    a real source; use 'inference'/'hypothesis' for model-derived claims.
+  • 'search' returns CHUNKS (sections), not whole pages. Use the returned slug to
+    'get' the full page when you need full context.
+  • Persist to a real file with --db (or env MEMORY_DB). ':memory:' is per-process
+    and lost on exit — do not use it across commands.
+
+COMMANDS
+  put <slug>            Create or replace the page at <slug>.
+      -c, --content <markdown>            required; the full page body
+      -e, --epistemic fact|inference|hypothesis   default: fact
+      -s, --source <kind:uri>             provenance; repeatable
+      → prints the new page id (JSON: {"id","slug"})
+
+  search <query>        Hybrid search over live chunks.
+      -k, --top-k <n>                     default: 10
+      → ranked chunks (JSON array): slug, ordinal, headingPath, text,
+        epistemic, score, sourceCount, lastConfirmedAt
+
+  get <slug>            Print the live page's full Markdown (for reading/editing).
+  resolve <slug>        Print the live page's id + metadata (no body).
+  history <slug>        List every version of the slug (oldest first).
+  evidence <pageId>     List a page's sources.
+  add-evidence <pageId> -s <kind:uri> [-s ...]   Attach/refresh sources.
+
+OPTIONS
+  -c, --content <text>     page Markdown body (put)
+  -e, --epistemic <value>  fact | inference | hypothesis (default: fact)
+  -s, --source <spec>      "kind:uri" (repeatable), or a JSON object:
+                           '{"kind":"url","uri":"…","title":"…","locator":"…"}'
+                           kind ∈ file | url | conversation | tool | other
+  -k, --top-k <n>          number of search results (default: 10)
+      --db <path>          SQLite file; default env MEMORY_DB or "memory.db".
+                           Relative paths resolve from your current directory.
+      --json               machine-readable JSON on stdout
+  -h, --help               show this help
+
+EXAMPLES
+  # Content is Markdown. In bash/zsh use $'…' so \\n becomes a real newline
+  # (plain "…" keeps \\n literal). Calling programmatically? pass real newlines.
+
+  # Author a page with provenance, persisting to a file
+  memory-storage put ddd-aggregates \\
+    -c $'# Aggregates\\n\\nAn aggregate is a consistency boundary.' \\
+    -e fact -s url:https://martinfowler.com/bliki/DDD_Aggregate.html \\
+    --db ./memory.db
+
+  # Search (machine-readable), then open the matching page
+  memory-storage search "consistency boundary" --json --db ./memory.db
+  memory-storage get ddd-aggregates --db ./memory.db
+
+  # Record a model-derived claim, clearly marked
+  memory-storage put hunch/cache-key \\
+    -c $'# Cache key\\n\\nLikely collides on tenant id.' \\
+    -e hypothesis -s conversation:session-2026-06-29 --db ./memory.db
+
+EXIT CODES
+  0 success   1 error (message on stderr)
+
+ENVIRONMENT
+  MEMORY_DB                SQLite path (overridden by --db)
+  MEMORY_MODEL_CACHE       model download dir (default ~/.cache/memory-storage)
+  MEMORY_EMBEDDING_MODEL   ONNX repo id (default sirasagi62/ruri-v3-310m-ONNX)
+  MEMORY_EMBEDDING_DTYPE   quantization (default q8)
+  MEMORY_CHUNK_MAX_CHARS   chunk size budget (default 1200)
+
+The embedding model downloads once on first use (a few hundred MB).
 `;
 
 const EPISTEMIC = new Set(["fact", "inference", "hypothesis"]);
