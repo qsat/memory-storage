@@ -1,0 +1,14 @@
+{
+  "name": "memory-storage-check",
+  "version": "0.1.0",
+  "description": "Manual smoke check for the memory-storage layer (real embeddings)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsx src/check.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

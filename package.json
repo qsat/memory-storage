@@ -5,13 +5,16 @@
   "type": "module",
   "main": "dist/local_hybrid_search.js",
   "types": "dist/local_hybrid_search.d.ts",
+  "workspaces": [
+    "check"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check": "npm run check --workspace memory-storage-check"
   },
   "dependencies": {
-    "@anthropic-ai/tokenizer": "^0.0.4",
     "@huggingface/transformers": "^3.4.0",
     "better-sqlite3": "^11.8.1",
     "sqlite-vec": "^0.1.6"
