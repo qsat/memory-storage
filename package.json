@@ -1,0 +1,28 @@
+{
+  "name": "memory-storage",
+  "version": "0.1.0",
+  "description": "Local hybrid search / RAG memory layer for local LLMs",
+  "type": "module",
+  "main": "dist/local_hybrid_search.js",
+  "types": "dist/local_hybrid_search.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/tokenizer": "^0.0.4",
+    "@huggingface/transformers": "^3.4.0",
+    "better-sqlite3": "^11.8.1",
+    "sqlite-vec": "^0.1.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
