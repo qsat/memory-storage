@@ -5,7 +5,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**"],
-      exclude: ["src/**/*.test.ts"],
+      // types.ts is type-only (no runtime code); exclude to avoid a 0% noise row.
+      exclude: ["src/**/*.test.ts", "src/types.ts"],
       // text: console; json-summary + json: consumed by the PR coverage action.
       reporter: ["text", "json-summary", "json", "html"],
       reportOnFailure: true,

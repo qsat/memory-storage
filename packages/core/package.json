@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "description": "Local hybrid search / RAG memory layer for local LLMs",
   "type": "module",
-  "main": "dist/local_hybrid_search.js",
-  "types": "dist/local_hybrid_search.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/local_hybrid_search.d.ts",
-      "default": "./dist/local_hybrid_search.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     }
   },
   "scripts": {
