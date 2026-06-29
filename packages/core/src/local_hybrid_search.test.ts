@@ -190,6 +190,16 @@ describe("MemoryStore", () => {
       expect(await store.hybridSearch("content", -5)).toEqual([]);
     });
 
+    it("handles very short queries without throwing (FTS skipped)", async () => {
+      await store.put("a-doc", {
+        content: "短いクエリでも落ちないことを確認するドキュメント",
+      });
+      // 1-char query: escapeFtsQuery returns "" (< 3 chars) so FTS is skipped
+      // and only the vector search runs.
+      const results = await store.hybridSearch("あ", 5);
+      expect(Array.isArray(results)).toBe(true);
+    });
+
     it("excludes stale entries", async () => {
       await store.put("old-fact", { content: "Old version of the fact" });
       await store.put("old-fact", { content: "New version of the fact" });
