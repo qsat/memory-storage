@@ -14,7 +14,7 @@
  *
  *   MEMORY_EMBEDDING_MODEL=<onnx-repo> MEMORY_EMBEDDING_DTYPE=fp32 npm run check
  */
-import { MemoryStore } from "memory-storage";
+import { MemoryStore, onModelProgress, type ModelProgress } from "memory-storage";
 
 const dbPath = process.argv[2] ?? ":memory:";
 
@@ -35,6 +35,19 @@ async function main(): Promise<void> {
       ` / dtype: ${process.env.MEMORY_EMBEDDING_DTYPE ?? "q8"}`
   );
   console.log("Loading embedding model (first run downloads it)...");
+
+  let downloading = false;
+  onModelProgress((p: ModelProgress) => {
+    if (p.status === "progress" && typeof p.progress === "number") {
+      if (!downloading) {
+        console.log("⏳ モデルをダウンロード中 (初回のみ)...");
+        downloading = true;
+      }
+      process.stderr.write(`\r  ${p.file ?? ""}: ${Math.floor(p.progress)}%   `);
+    } else if (p.status === "done" && downloading) {
+      process.stderr.write("\n");
+    }
+  });
 
   const store = new MemoryStore(dbPath);
 

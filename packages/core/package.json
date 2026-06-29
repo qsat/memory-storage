@@ -6,7 +6,10 @@
   "main": "dist/local_hybrid_search.js",
   "types": "dist/local_hybrid_search.d.ts",
   "exports": {
-    ".": "./src/local_hybrid_search.ts"
+    ".": {
+      "types": "./dist/local_hybrid_search.d.ts",
+      "default": "./dist/local_hybrid_search.js"
+    }
   },
   "scripts": {
     "build": "tsc",

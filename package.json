@@ -10,8 +10,9 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "check": "npm run check --workspace memory-storage-check"
+    "typecheck": "npm run build --workspace memory-storage && npm run typecheck --workspaces --if-present",
+    "check": "npm run build --workspace memory-storage && npm run check --workspace memory-storage-check",
+    "cli": "npm run build --workspace memory-storage && npm run start --workspace memory-storage-cli --"
   },
   "engines": {
     "node": ">=20.0.0"

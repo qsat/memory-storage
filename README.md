@@ -24,12 +24,14 @@
 packages/
 ├─ core/     memory-storage ライブラリ本体
 │  └─ src/local_hybrid_search.ts
+├─ cli/      CLI（memory コマンド）— memory-storage-cli
+│  └─ src/cli.ts
 └─ check/    実埋め込みモデルでの動作チェックツール（memory-storage-check）
    └─ src/check.ts
 ```
 
 ルートは private なワークスペースルートで、`build` / `test` / `typecheck` を各ワークスペースに
-委譲します。`check` はライブラリをパッケージ名 `memory-storage` で import します。
+委譲します。`cli` / `check` はライブラリをパッケージ名 `memory-storage` で import します。
 
 ## 必要環境
 
@@ -121,6 +123,47 @@ const history = store.getHistory("typescript");
 
 store.close();
 ```
+
+## CLI（`memory` コマンド）
+
+書き込みは agent からの明示的な呼び出しを想定しています。CLI の各サブコマンドは、それ自体が
+監査可能な write gate になります（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) 参照）。
+
+リポジトリ内で実行する場合（ビルド不要、tsx 経由）:
+
+```bash
+npm run cli -- put typescript -c "TypeScript は JS に型を加えた言語" -e fact \
+  -s url:https://www.typescriptlang.org/
+npm run cli -- search "型システムを持つ言語" -k 5
+npm run cli -- history typescript
+```
+
+ビルドして `memory` コマンドとして使う場合:
+
+```bash
+npm run build                       # packages/*/dist を生成（bin もリンクされる）
+./node_modules/.bin/memory --help   # もしくは npm link で memory をグローバルに
+```
+
+### サブコマンド
+
+| コマンド | 説明 |
+|---|---|
+| `put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]` | 新規 or 置換 |
+| `search <query> [-k <topK>]` | ハイブリッド検索 |
+| `resolve <slug>` | 最新 live を取得 |
+| `history <slug>` | 版履歴 |
+| `evidence <knowledgeId>` | 出典一覧 |
+| `add-evidence <knowledgeId> -s <kind:uri> [-s ...]` | 出典追加 |
+
+共通オプション: `--db <path>`（既定: env `MEMORY_DB` または `memory.db`）、
+`--json`（機械可読出力。agent はこちらを使用）、`-h/--help`。
+
+`-s/--source` は `kind:uri` の略記、または JSON
+（`'{"kind":"url","uri":"...","title":"...","locator":"..."}'`）を受け付けます。
+`kind` は `file` / `url` / `conversation` / `tool` / `other`。
+
+> 初回実行時はモデルのダウンロードが走り、進捗が stderr に表示されます（`--json` の stdout は汚しません）。
 
 ## 公開 API
 

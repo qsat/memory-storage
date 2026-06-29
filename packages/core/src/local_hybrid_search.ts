@@ -97,12 +97,35 @@ const DEFAULT_TOP_K = 10;
 // Embedder (singleton)
 // ---------------------------------------------------------------------------
 
+/** Progress event emitted by transformers.js while loading/downloading. */
+export interface ModelProgress {
+  status: string; // "initiate" | "download" | "progress" | "done" | ...
+  name?: string;
+  file?: string;
+  progress?: number; // 0..100
+  loaded?: number;
+  total?: number;
+}
+
 let _embedder: FeatureExtractionPipeline | null = null;
+let _progressCallback: ((p: ModelProgress) => void) | undefined;
+
+/**
+ * Register a callback for embedding-model load/download progress. Useful for
+ * surfacing "downloading model..." in a CLI. Must be set before the first
+ * embedding call (the model loads lazily and is cached afterwards).
+ */
+export function onModelProgress(cb: (p: ModelProgress) => void): void {
+  _progressCallback = cb;
+}
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (!_embedder) {
     _embedder = await pipeline("feature-extraction", EMBEDDING_MODEL, {
       dtype: EMBEDDING_DTYPE,
+      progress_callback: _progressCallback as
+        | ((p: ModelProgress) => void)
+        | undefined,
     });
   }
   return _embedder;
