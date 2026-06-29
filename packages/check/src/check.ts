@@ -36,16 +36,21 @@ async function main(): Promise<void> {
   );
   console.log("Loading embedding model (first run downloads it)...");
 
+  // Files download concurrently; emit one line per file at 25% milestones.
   let downloading = false;
+  const lastBucket = new Map<string, number>();
   onModelProgress((p: ModelProgress) => {
-    if (p.status === "progress" && typeof p.progress === "number") {
-      if (!downloading) {
-        console.log("⏳ モデルをダウンロード中 (初回のみ)...");
-        downloading = true;
-      }
-      process.stderr.write(`\r  ${p.file ?? ""}: ${Math.floor(p.progress)}%   `);
-    } else if (p.status === "done" && downloading) {
-      process.stderr.write("\n");
+    if (p.status !== "progress" || typeof p.progress !== "number" || !p.file) {
+      return;
+    }
+    if (!downloading) {
+      console.log("⏳ モデルをダウンロード中 (初回のみ)...");
+      downloading = true;
+    }
+    const bucket = Math.min(4, Math.floor(p.progress / 25));
+    if (lastBucket.get(p.file) !== bucket) {
+      lastBucket.set(p.file, bucket);
+      process.stderr.write(`  ${p.file}: ${bucket * 25}%\n`);
     }
   });
 

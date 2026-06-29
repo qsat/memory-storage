@@ -71,23 +71,26 @@ function parseSource(spec: string): SourceInput {
   return { kind: kind as SourceInput["kind"], uri };
 }
 
-/** Print model download/load progress to stderr (keeps stdout clean). */
+/**
+ * Print model download progress to stderr (keeps stdout clean for --json).
+ * Files download concurrently, so we emit one line per file at 25% milestones
+ * instead of overwriting a single line (which garbles with parallel downloads).
+ */
 function installProgressReporter(): void {
   let announced = false;
-  const pct = new Map<string, number>();
+  const lastBucket = new Map<string, number>(); // file -> last 25%-bucket shown
   onModelProgress((p: ModelProgress) => {
-    if (p.status === "progress" && typeof p.progress === "number") {
-      if (!announced) {
-        process.stderr.write("⏳ 埋め込みモデルをダウンロード中 (初回のみ)...\n");
-        announced = true;
-      }
-      const rounded = Math.floor(p.progress);
-      if (p.file && pct.get(p.file) !== rounded) {
-        pct.set(p.file, rounded);
-        process.stderr.write(`\r  ${p.file}: ${rounded}%   `);
-      }
-    } else if (p.status === "done" && announced) {
-      process.stderr.write("\n");
+    if (p.status !== "progress" || typeof p.progress !== "number" || !p.file) {
+      return;
+    }
+    if (!announced) {
+      process.stderr.write("⏳ 埋め込みモデルをダウンロード中 (初回のみ)...\n");
+      announced = true;
+    }
+    const bucket = Math.min(4, Math.floor(p.progress / 25)); // 0,25,50,75,100
+    if (lastBucket.get(p.file) !== bucket) {
+      lastBucket.set(p.file, bucket);
+      process.stderr.write(`  ${p.file}: ${bucket * 25}%\n`);
     }
   });
 }
