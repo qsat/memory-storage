@@ -8,6 +8,11 @@
  *
  *   npm run check                 # in-memory DB
  *   npm run check -- ./memory.db  # persist to a file you can inspect
+ *
+ * transformers.js needs an ONNX build of the model. Override the repo/quant
+ * if the default does not work in your environment:
+ *
+ *   MEMORY_EMBEDDING_MODEL=<onnx-repo> MEMORY_EMBEDDING_DTYPE=fp32 npm run check
  */
 import { MemoryStore } from "memory-storage";
 
@@ -19,6 +24,10 @@ function hr(label: string): void {
 
 async function main(): Promise<void> {
   console.log(`DB: ${dbPath}`);
+  console.log(
+    `Model: ${process.env.MEMORY_EMBEDDING_MODEL ?? "(default ONNX repo)"}` +
+      ` / dtype: ${process.env.MEMORY_EMBEDDING_DTYPE ?? "q8"}`
+  );
   console.log("Loading embedding model (first run downloads it)...");
 
   const store = new MemoryStore(dbPath);

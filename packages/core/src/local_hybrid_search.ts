@@ -66,9 +66,28 @@ export interface HistoryRow {
 // Constants
 // ---------------------------------------------------------------------------
 
-const EMBEDDING_MODEL = "ku-nlp/ruri-v3-310m";
+// Ruri v3 310m. transformers.js needs an ONNX build, which the canonical
+// PyTorch repo (cl-nagoya/ruri-v3-310m) does not ship — so we default to a
+// community ONNX conversion. Both the repo and the dtype are overridable via
+// env vars because which ONNX build / quantization is available depends on the
+// repo you point at. The output dimension stays 768 regardless (it is baked
+// into every stored vector — see the guardrails in SKILL.md).
+type EmbeddingDtype =
+  | "auto"
+  | "fp32"
+  | "fp16"
+  | "q8"
+  | "int8"
+  | "uint8"
+  | "q4"
+  | "bnb4"
+  | "q4f16";
+
+const EMBEDDING_MODEL =
+  process.env.MEMORY_EMBEDDING_MODEL ?? "sirasagi62/ruri-v3-310m-ONNX";
 const EMBEDDING_DIM = 768;
-const EMBEDDING_DTYPE = "q8" as const;
+const EMBEDDING_DTYPE = (process.env.MEMORY_EMBEDDING_DTYPE ??
+  "q8") as EmbeddingDtype;
 const QUERY_PREFIX = "検索クエリ: ";
 const DOC_PREFIX = "検索文書: ";
 const RRF_K = 60;
