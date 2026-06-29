@@ -1,0 +1,57 @@
+name: Release CLI
+
+# Pre-build the CLI and publish a standalone, installable package to the
+# `release` branch. No build runs on the user's machine: they install the
+# prebuilt bundle with
+#
+#   npm i -g github:qsat/memory-storage#release
+#
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write # to force-push the release branch
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build CLI bundle
+        run: npm run build
+
+      - name: Publish to release branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # release = current main tree + the committed prebuilt bundle. The
+          # root package.json's `files` allowlist keeps the install tarball to
+          # just package.json + packages/cli/dist/cli.js (npm packs per `files`).
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B release
+          git add -f packages/cli/dist/cli.js
+          git commit -q -m "Prebuilt CLI from ${GITHUB_SHA}"
+          git push -f \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            HEAD:release
