@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import {
@@ -26,7 +27,8 @@ export interface PutOptions {
   epistemic?: "fact" | "inference" | "hypothesis";
 }
 
-export interface KnowledgeRow {
+/** A wiki page: the canonical full-markdown record, addressed by slug. */
+export interface PageRow {
   id: number;
   slug: string;
   content: string;
@@ -38,10 +40,23 @@ export interface KnowledgeRow {
   superseded_at: number | null;
 }
 
-export interface SearchResult {
+/** A derived chunk of a page (the unit of embedding / retrieval). */
+export interface ChunkRow {
   id: number;
+  pageId: number;
+  ordinal: number;
+  headingPath: string | null;
+  text: string;
+}
+
+/** A chunk-level search hit, carrying its parent page's metadata. */
+export interface SearchResult {
+  chunkId: number;
+  pageId: number;
   slug: string;
-  content: string;
+  ordinal: number;
+  headingPath: string | null;
+  text: string;
   epistemic: "fact" | "inference" | "hypothesis";
   score: number;
   sourceCount: number;
@@ -70,12 +85,6 @@ export interface HistoryRow {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Ruri v3 310m. transformers.js needs an ONNX build, which the canonical
-// PyTorch repo (cl-nagoya/ruri-v3-310m) does not ship — so we default to a
-// community ONNX conversion. Both the repo and the dtype are overridable via
-// env vars because which ONNX build / quantization is available depends on the
-// repo you point at. The output dimension stays 768 regardless (it is baked
-// into every stored vector — see the guardrails in SKILL.md).
 type EmbeddingDtype =
   | "auto"
   | "fp32"
@@ -96,6 +105,11 @@ const QUERY_PREFIX = "検索クエリ: ";
 const DOC_PREFIX = "検索文書: ";
 const RRF_K = 60;
 const DEFAULT_TOP_K = 10;
+
+// Approximate per-chunk size budget (characters, a proxy for tokens — kept well
+// under the model's max sequence length to avoid silent truncation). Smaller
+// chunks improve retrieval precision. Override with MEMORY_CHUNK_MAX_CHARS.
+const CHUNK_MAX_CHARS = Number(process.env.MEMORY_CHUNK_MAX_CHARS ?? 1200);
 
 // ---------------------------------------------------------------------------
 // Path / model cache location
@@ -201,6 +215,117 @@ async function embed(text: string, prefix: string): Promise<Buffer> {
 }
 
 // ---------------------------------------------------------------------------
+// Markdown chunking
+// ---------------------------------------------------------------------------
+
+export interface Chunk {
+  ordinal: number;
+  headingPath: string | null;
+  text: string;
+}
+
+const HEADING_RE = /^(#{1,6})\s+(.*)$/;
+const FENCE_RE = /```[\s\S]*?```/g;
+
+/**
+ * Split markdown into chunks: first by heading sections (tracking the heading
+ * path), then by a character budget so no chunk overflows the embedding model.
+ * The raw section text (including Mermaid/code) is kept for display; the text
+ * used for embedding is derived separately (see embedInputFor).
+ */
+export function chunkMarkdown(
+  content: string,
+  maxChars: number = CHUNK_MAX_CHARS
+): Chunk[] {
+  const lines = content.split(/\r?\n/);
+  const sections: { headingPath: string; lines: string[] }[] = [];
+  const stack: { level: number; title: string }[] = [];
+  let current: { headingPath: string; lines: string[] } = {
+    headingPath: "",
+    lines: [],
+  };
+
+  const flush = () => {
+    if (current.lines.join("\n").trim()) sections.push(current);
+  };
+
+  for (const line of lines) {
+    const m = HEADING_RE.exec(line);
+    if (m) {
+      flush();
+      const level = m[1].length;
+      const title = m[2].trim();
+      while (stack.length && stack[stack.length - 1].level >= level) stack.pop();
+      stack.push({ level, title });
+      current = {
+        headingPath: stack.map((s) => s.title).join(" > "),
+        lines: [line],
+      };
+    } else {
+      current.lines.push(line);
+    }
+  }
+  flush();
+
+  const chunks: Chunk[] = [];
+  let ordinal = 0;
+  for (const sec of sections) {
+    const text = sec.lines.join("\n").trim();
+    if (!text) continue;
+    for (const piece of splitByBudget(text, maxChars)) {
+      chunks.push({
+        ordinal: ordinal++,
+        headingPath: sec.headingPath || null,
+        text: piece,
+      });
+    }
+  }
+  if (chunks.length === 0) {
+    chunks.push({ ordinal: 0, headingPath: null, text: content.trim() });
+  }
+  return chunks;
+}
+
+/** Split text into pieces under maxChars, preferring paragraph boundaries. */
+function splitByBudget(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) return [text];
+  const pieces: string[] = [];
+  let buf = "";
+  for (const para of text.split(/\n{2,}/)) {
+    if (para.length > maxChars) {
+      if (buf) {
+        pieces.push(buf);
+        buf = "";
+      }
+      for (let i = 0; i < para.length; i += maxChars) {
+        pieces.push(para.slice(i, i + maxChars));
+      }
+    } else if ((buf ? buf.length + 2 + para.length : para.length) > maxChars) {
+      if (buf) pieces.push(buf);
+      buf = para;
+    } else {
+      buf = buf ? `${buf}\n\n${para}` : para;
+    }
+  }
+  if (buf) pieces.push(buf);
+  return pieces;
+}
+
+/** Text actually fed to the embedder: heading path + prose, code fences stripped. */
+function embedInputFor(chunk: Chunk): string {
+  const stripped = chunk.text
+    .replace(FENCE_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const ei = [chunk.headingPath, stripped].filter(Boolean).join("\n").trim();
+  return ei || chunk.text.trim();
+}
+
+function hashOf(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+// ---------------------------------------------------------------------------
 // Schema
 // ---------------------------------------------------------------------------
 
@@ -217,42 +342,52 @@ CREATE TABLE IF NOT EXISTS source (
   UNIQUE (kind, uri)
 );
 
-CREATE TABLE IF NOT EXISTS knowledge (
+CREATE TABLE IF NOT EXISTS page (
   id INTEGER PRIMARY KEY,
   slug TEXT NOT NULL,
   content TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live','stale')),
   epistemic TEXT NOT NULL DEFAULT 'fact'
     CHECK (epistemic IN ('fact','inference','hypothesis')),
-  superseded_by INTEGER REFERENCES knowledge(id),
+  superseded_by INTEGER REFERENCES page(id),
   created_at INTEGER NOT NULL,
   last_confirmed_at INTEGER NOT NULL,
   superseded_at INTEGER
 );
 
-CREATE INDEX IF NOT EXISTS idx_knowledge_slug ON knowledge(slug);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_live_slug
-  ON knowledge(slug) WHERE status = 'live';
+CREATE INDEX IF NOT EXISTS idx_page_slug ON page(slug);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_page_live_slug
+  ON page(slug) WHERE status = 'live';
+
+CREATE TABLE IF NOT EXISTS chunk (
+  id INTEGER PRIMARY KEY,
+  page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  heading_path TEXT,
+  text TEXT NOT NULL,
+  embed_hash TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunk_page ON chunk(page_id);
 
 CREATE TABLE IF NOT EXISTS evidence (
-  knowledge_id INTEGER NOT NULL REFERENCES knowledge(id) ON DELETE CASCADE,
+  page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
   source_id INTEGER NOT NULL REFERENCES source(id),
   locator TEXT,
   confirmed_at INTEGER NOT NULL,
-  PRIMARY KEY (knowledge_id, source_id)
+  PRIMARY KEY (page_id, source_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_evidence_source ON evidence(source_id);
 `;
 
 const FTS_TABLE_SQL = `
-CREATE VIRTUAL TABLE IF NOT EXISTS fts_knowledge
-  USING fts5(content, tokenize='trigram');
+CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunk
+  USING fts5(text, tokenize='trigram');
 `;
 
-// vec0 does not support IF NOT EXISTS — handled separately
 const VEC_TABLE_SQL = `
-CREATE VIRTUAL TABLE vec_knowledge
+CREATE VIRTUAL TABLE vec_chunk
   USING vec0(rowid INTEGER PRIMARY KEY, embedding FLOAT[${EMBEDDING_DIM}]);
 `;
 
@@ -271,73 +406,64 @@ export class MemoryStore {
     this.stmts = this.prepareStatements();
   }
 
-  // ---- Schema bootstrap ---------------------------------------------------
-
   private initSchema(): void {
     this.db.exec(SCHEMA_SQL);
     this.db.exec(FTS_TABLE_SQL);
-
     const hasVec = this.db
       .prepare(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='vec_knowledge'"
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='vec_chunk'"
       )
       .get();
-    if (!hasVec) {
-      this.db.exec(VEC_TABLE_SQL);
-    }
+    if (!hasVec) this.db.exec(VEC_TABLE_SQL);
   }
-
-  // ---- Prepared statements ------------------------------------------------
 
   private prepareStatements() {
     return {
-      insertKnowledge: this.db.prepare<{
-        slug: string;
-        content: string;
-        epistemic: string;
-        created_at: number;
-        last_confirmed_at: number;
-      }>(`
-        INSERT INTO knowledge (slug, content, epistemic, created_at, last_confirmed_at)
+      insertPage: this.db.prepare(`
+        INSERT INTO page (slug, content, epistemic, created_at, last_confirmed_at)
         VALUES (@slug, @content, @epistemic, @created_at, @last_confirmed_at)
         RETURNING id
       `),
 
       staleLive: this.db.prepare<{ slug: string; now: number }>(
-        `UPDATE knowledge SET status = 'stale', superseded_at = @now
+        `UPDATE page SET status = 'stale', superseded_at = @now
          WHERE slug = @slug AND status = 'live'`
       ),
 
-      linkSupersession: this.db.prepare<{
-        old_id: number;
-        new_id: number;
-      }>(
-        `UPDATE knowledge SET superseded_by = @new_id
-         WHERE id = @old_id`
+      linkSupersession: this.db.prepare<{ old_id: number; new_id: number }>(
+        `UPDATE page SET superseded_by = @new_id WHERE id = @old_id`
       ),
 
-      insertFts: this.db.prepare<{ rowid: number; content: string }>(
-        `INSERT INTO fts_knowledge (rowid, content) VALUES (@rowid, @content)`
+      insertChunk: this.db.prepare(`
+        INSERT INTO chunk (page_id, ordinal, heading_path, text, embed_hash)
+        VALUES (@page_id, @ordinal, @heading_path, @text, @embed_hash)
+        RETURNING id
+      `),
+
+      chunksByPage: this.db.prepare<{ page_id: number }>(
+        `SELECT id, embed_hash FROM chunk WHERE page_id = @page_id`
       ),
 
+      deleteChunksByPage: this.db.prepare<{ page_id: number }>(
+        `DELETE FROM chunk WHERE page_id = @page_id`
+      ),
+
+      insertFts: this.db.prepare<{ rowid: number; text: string }>(
+        `INSERT INTO fts_chunk (rowid, text) VALUES (@rowid, @text)`
+      ),
       deleteFts: this.db.prepare<{ rowid: number }>(
-        `DELETE FROM fts_knowledge WHERE rowid = @rowid`
+        `DELETE FROM fts_chunk WHERE rowid = @rowid`
       ),
 
       insertVec: this.db.prepare<[bigint, Buffer]>(
-        `INSERT INTO vec_knowledge (rowid, embedding) VALUES (?, ?)`
+        `INSERT INTO vec_chunk (rowid, embedding) VALUES (?, ?)`
+      ),
+      deleteVec: this.db.prepare(`DELETE FROM vec_chunk WHERE rowid = ?`),
+      readVec: this.db.prepare(
+        `SELECT embedding FROM vec_chunk WHERE rowid = ?`
       ),
 
-      deleteVec: this.db.prepare<[bigint]>(
-        `DELETE FROM vec_knowledge WHERE rowid = ?`
-      ),
-
-      upsertSource: this.db.prepare<{
-        kind: string;
-        uri: string;
-        title: string | null;
-        now: number;
-      }>(`
+      upsertSource: this.db.prepare(`
         INSERT INTO source (kind, uri, title, ingested_at)
         VALUES (@kind, @uri, @title, @now)
         ON CONFLICT (kind, uri) DO UPDATE SET title = COALESCE(excluded.title, title)
@@ -345,167 +471,219 @@ export class MemoryStore {
       `),
 
       insertEvidence: this.db.prepare<{
-        knowledge_id: number;
+        page_id: number;
         source_id: number;
         locator: string | null;
         confirmed_at: number;
-      }>(`INSERT INTO evidence (knowledge_id, source_id, locator, confirmed_at)
-          VALUES (@knowledge_id, @source_id, @locator, @confirmed_at)
-          ON CONFLICT (knowledge_id, source_id) DO UPDATE
+      }>(`INSERT INTO evidence (page_id, source_id, locator, confirmed_at)
+          VALUES (@page_id, @source_id, @locator, @confirmed_at)
+          ON CONFLICT (page_id, source_id) DO UPDATE
             SET confirmed_at = excluded.confirmed_at,
                 locator = COALESCE(excluded.locator, locator)`),
 
       refreshConfirmedAt: this.db.prepare<{ id: number }>(
-        `UPDATE knowledge SET last_confirmed_at = COALESCE(
-           (SELECT MAX(confirmed_at) FROM evidence WHERE knowledge_id = @id),
+        `UPDATE page SET last_confirmed_at = COALESCE(
+           (SELECT MAX(confirmed_at) FROM evidence WHERE page_id = @id),
            created_at
          ) WHERE id = @id`
       ),
 
       resolveLive: this.db.prepare<{ slug: string }>(
-        `SELECT * FROM knowledge WHERE slug = @slug AND status = 'live'`
+        `SELECT * FROM page WHERE slug = @slug AND status = 'live'`
       ),
-
-      knowledgeExists: this.db.prepare<{ id: number }>(
-        `SELECT 1 FROM knowledge WHERE id = @id`
+      liveIdBySlug: this.db.prepare<{ slug: string }>(
+        `SELECT id FROM page WHERE slug = @slug AND status = 'live'`
+      ),
+      pageExists: this.db.prepare<{ id: number }>(
+        `SELECT 1 FROM page WHERE id = @id`
       ),
 
       ftsSearch: this.db.prepare<{ query: string; limit: number }>(
-        `SELECT rowid FROM fts_knowledge WHERE content MATCH @query
+        `SELECT rowid FROM fts_chunk WHERE text MATCH @query
          ORDER BY rank LIMIT @limit`
       ),
-
       vecSearch: this.db.prepare<[Buffer, number]>(
-        `SELECT rowid, distance FROM vec_knowledge
-         WHERE embedding MATCH ? AND k = ?
-         ORDER BY distance`
+        `SELECT rowid, distance FROM vec_chunk
+         WHERE embedding MATCH ? AND k = ? ORDER BY distance`
       ),
 
-      // Fetch a live knowledge row together with its source count in one query.
-      getLiveSearchRow: this.db.prepare<{ id: number }>(
-        `SELECT id, slug, content, epistemic, last_confirmed_at AS lastConfirmedAt,
-                (SELECT COUNT(*) FROM evidence WHERE knowledge_id = knowledge.id)
-                  AS sourceCount
-         FROM knowledge WHERE id = @id AND status = 'live'`
+      // A chunk hit joined with its live page + source count, in one query.
+      liveSearchRow: this.db.prepare<{ id: number }>(
+        `SELECT c.id AS chunkId, c.page_id AS pageId, p.slug, c.ordinal,
+                c.heading_path AS headingPath, c.text, p.epistemic,
+                p.last_confirmed_at AS lastConfirmedAt,
+                (SELECT COUNT(*) FROM evidence WHERE page_id = p.id) AS sourceCount
+         FROM chunk c JOIN page p ON c.page_id = p.id
+         WHERE c.id = @id AND p.status = 'live'`
+      ),
+
+      getChunks: this.db.prepare<{ page_id: number }>(
+        `SELECT id, page_id AS pageId, ordinal, heading_path AS headingPath, text
+         FROM chunk WHERE page_id = @page_id ORDER BY ordinal ASC`
       ),
 
       getEvidence: this.db.prepare<{ id: number }>(
         `SELECT s.id AS sourceId, s.kind, s.uri, s.title,
                 e.locator, e.confirmed_at AS confirmedAt
          FROM evidence e JOIN source s ON e.source_id = s.id
-         WHERE e.knowledge_id = @id
-         ORDER BY e.confirmed_at DESC`
+         WHERE e.page_id = @id ORDER BY e.confirmed_at DESC`
       ),
 
       getHistory: this.db.prepare<{ slug: string }>(
         `SELECT id, status, epistemic, superseded_by, created_at, superseded_at
-         FROM knowledge WHERE slug = @slug
-         ORDER BY created_at ASC`
-      ),
-
-      getLiveIdBySlug: this.db.prepare<{ slug: string }>(
-        `SELECT id FROM knowledge WHERE slug = @slug AND status = 'live'`
+         FROM page WHERE slug = @slug ORDER BY created_at ASC`
       ),
     };
   }
 
   // ---- Public API ---------------------------------------------------------
 
-  async put(
-    slug: string,
-    opts: PutOptions
-  ): Promise<number> {
+  /**
+   * Create or replace a wiki page. The full markdown is the source of truth;
+   * it is chunked for indexing, and embeddings of unchanged chunks are reused
+   * from the previous version (only changed/new chunks are re-embedded).
+   */
+  async put(slug: string, opts: PutOptions): Promise<number> {
     const { content, sources, epistemic = "fact" } = opts;
+    if (!content.trim()) throw new Error("put: content must not be empty");
 
-    if (!content.trim()) {
-      throw new Error("put: content must not be empty");
-    }
+    const chunks = chunkMarkdown(content).map((c) => {
+      const embedInput = embedInputFor(c);
+      return { ...c, embedInput, hash: hashOf(embedInput) };
+    });
 
-    const embedding = await embed(content, DOC_PREFIX);
     const now = Date.now();
-
-    const existing = this.stmts.getLiveIdBySlug.get({ slug }) as
+    const existing = this.stmts.liveIdBySlug.get({ slug }) as
       | { id: number }
       | undefined;
+
+    // Reuse embeddings from the current live version by content hash.
+    const reuse = new Map<string, Buffer>();
+    if (existing) {
+      const old = this.stmts.chunksByPage.all({ page_id: existing.id }) as {
+        id: number;
+        embed_hash: string;
+      }[];
+      for (const oc of old) {
+        if (reuse.has(oc.embed_hash)) continue;
+        const v = this.stmts.readVec.get(BigInt(oc.id)) as
+          | { embedding: Buffer }
+          | undefined;
+        if (v?.embedding) reuse.set(oc.embed_hash, v.embedding);
+      }
+    }
+
+    // Embed only what we can't reuse (async, before the sync transaction).
+    const vectors = new Map<string, Buffer>();
+    for (const c of chunks) {
+      if (vectors.has(c.hash)) continue;
+      const reused = reuse.get(c.hash);
+      vectors.set(c.hash, reused ?? (await embed(c.embedInput, DOC_PREFIX)));
+    }
 
     const txn = this.db.transaction(() => {
       if (existing) {
         this.stmts.staleLive.run({ slug, now });
-        this.stmts.deleteFts.run({ rowid: existing.id });
-        this.stmts.deleteVec.run(BigInt(existing.id));
+        const old = this.stmts.chunksByPage.all({ page_id: existing.id }) as {
+          id: number;
+        }[];
+        for (const oc of old) {
+          this.stmts.deleteFts.run({ rowid: oc.id });
+          this.stmts.deleteVec.run(BigInt(oc.id));
+        }
+        this.stmts.deleteChunksByPage.run({ page_id: existing.id });
       }
 
-      const row = this.stmts.insertKnowledge.get({
-        slug,
-        content,
-        epistemic,
-        created_at: now,
-        last_confirmed_at: now,
-      }) as { id: number };
-      const newId = row.id;
+      const newPageId = (
+        this.stmts.insertPage.get({
+          slug,
+          content,
+          epistemic,
+          created_at: now,
+          last_confirmed_at: now,
+        }) as { id: number }
+      ).id;
 
       if (existing) {
         this.stmts.linkSupersession.run({
           old_id: existing.id,
-          new_id: newId,
+          new_id: newPageId,
         });
       }
 
-      this.stmts.insertFts.run({ rowid: newId, content });
-      this.stmts.insertVec.run(BigInt(newId), embedding);
+      for (const c of chunks) {
+        const chunkId = (
+          this.stmts.insertChunk.get({
+            page_id: newPageId,
+            ordinal: c.ordinal,
+            heading_path: c.headingPath,
+            text: c.text,
+            embed_hash: c.hash,
+          }) as { id: number }
+        ).id;
+        this.stmts.insertFts.run({ rowid: chunkId, text: c.text });
+        this.stmts.insertVec.run(BigInt(chunkId), vectors.get(c.hash)!);
+      }
 
       if (sources) {
         for (const src of sources) {
-          const srcRow = this.stmts.upsertSource.get({
-            kind: src.kind,
-            uri: src.uri,
-            title: src.title ?? null,
-            now,
-          }) as { id: number };
+          const srcId = (
+            this.stmts.upsertSource.get({
+              kind: src.kind,
+              uri: src.uri,
+              title: src.title ?? null,
+              now,
+            }) as { id: number }
+          ).id;
           this.stmts.insertEvidence.run({
-            knowledge_id: newId,
-            source_id: srcRow.id,
+            page_id: newPageId,
+            source_id: srcId,
             locator: src.locator ?? null,
             confirmed_at: now,
           });
         }
-        this.stmts.refreshConfirmedAt.run({ id: newId });
+        this.stmts.refreshConfirmedAt.run({ id: newPageId });
       }
 
-      return newId;
+      return newPageId;
     });
 
     return txn();
   }
 
-  addEvidence(knowledgeId: number, source: SourceInput): void {
-    if (!this.stmts.knowledgeExists.get({ id: knowledgeId })) {
-      throw new Error(`addEvidence: knowledge id ${knowledgeId} does not exist`);
+  addEvidence(pageId: number, source: SourceInput): void {
+    if (!this.stmts.pageExists.get({ id: pageId })) {
+      throw new Error(`addEvidence: page id ${pageId} does not exist`);
     }
-
     const now = Date.now();
     const txn = this.db.transaction(() => {
-      const srcRow = this.stmts.upsertSource.get({
-        kind: source.kind,
-        uri: source.uri,
-        title: source.title ?? null,
-        now,
-      }) as { id: number };
-
+      const srcId = (
+        this.stmts.upsertSource.get({
+          kind: source.kind,
+          uri: source.uri,
+          title: source.title ?? null,
+          now,
+        }) as { id: number }
+      ).id;
       this.stmts.insertEvidence.run({
-        knowledge_id: knowledgeId,
-        source_id: srcRow.id,
+        page_id: pageId,
+        source_id: srcId,
         locator: source.locator ?? null,
         confirmed_at: now,
       });
-
-      this.stmts.refreshConfirmedAt.run({ id: knowledgeId });
+      this.stmts.refreshConfirmedAt.run({ id: pageId });
     });
     txn();
   }
 
-  resolveSlug(slug: string): KnowledgeRow | undefined {
-    return this.stmts.resolveLive.get({ slug }) as KnowledgeRow | undefined;
+  /** Resolve a slug to its current live page (full markdown content). */
+  resolveSlug(slug: string): PageRow | undefined {
+    return this.stmts.resolveLive.get({ slug }) as PageRow | undefined;
+  }
+
+  /** The chunks of a page, in order (for inspection / reconstruction). */
+  getChunks(pageId: number): ChunkRow[] {
+    return this.stmts.getChunks.all({ page_id: pageId }) as ChunkRow[];
   }
 
   async hybridSearch(
@@ -517,7 +695,6 @@ export class MemoryStore {
     const queryEmbedding = await embed(query, QUERY_PREFIX);
     const fetchN = topK * 3;
 
-    // FTS — escape query as a trigram phrase
     const ftsQuery = escapeFtsQuery(query);
     let ftsRows: { rowid: number }[] = [];
     if (ftsQuery) {
@@ -531,13 +708,11 @@ export class MemoryStore {
       }
     }
 
-    // Vec
     const vecRows = this.stmts.vecSearch.all(queryEmbedding, fetchN) as {
       rowid: number;
       distance: number;
     }[];
 
-    // RRF fusion
     const scores = new Map<number, number>();
     for (let i = 0; i < ftsRows.length; i++) {
       const id = ftsRows[i].rowid;
@@ -554,25 +729,22 @@ export class MemoryStore {
 
     const results: SearchResult[] = [];
     for (const [id, score] of ranked) {
-      const row = this.stmts.getLiveSearchRow.get({ id }) as
+      const row = this.stmts.liveSearchRow.get({ id }) as
         | Omit<SearchResult, "score">
         | undefined;
-      // Indexes only hold live rows, so a miss here means a stale/deleted entry.
-      if (!row) continue;
+      if (!row) continue; // stale/deleted chunk
       results.push({ ...row, score });
     }
     return results;
   }
 
-  getEvidence(knowledgeId: number): EvidenceRow[] {
-    return this.stmts.getEvidence.all({ id: knowledgeId }) as EvidenceRow[];
+  getEvidence(pageId: number): EvidenceRow[] {
+    return this.stmts.getEvidence.all({ id: pageId }) as EvidenceRow[];
   }
 
   getHistory(slug: string): HistoryRow[] {
     return this.stmts.getHistory.all({ slug }) as HistoryRow[];
   }
-
-  // ---- Lifecycle ----------------------------------------------------------
 
   close(): void {
     this.db.close();
@@ -586,6 +758,5 @@ export class MemoryStore {
 function escapeFtsQuery(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.length < 3) return "";
-  const escaped = trimmed.replace(/"/g, '""');
-  return `"${escaped}"`;
+  return `"${trimmed.replace(/"/g, '""')}"`;
 }

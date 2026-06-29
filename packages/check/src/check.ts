@@ -62,43 +62,59 @@ async function main(): Promise<void> {
 
   const store = new MemoryStore(dbPath);
 
-  hr("put — 知識を登録");
-  call('store.put("typescript", { content, epistemic:"fact", sources:[url] })');
-  await store.put("typescript", {
-    content: "TypeScript は JavaScript に静的型付けを加えた言語で、大規模開発に向く。",
+  const tsPage = `# TypeScript
+
+TypeScript は JavaScript に静的型付けを加えた言語で、大規模開発に向く。
+
+## 型システム
+
+構造的部分型と型推論を備え、エディタ支援が強力。
+
+## エコシステム
+
+\`\`\`mermaid
+graph TD; TS-->JS; TS-->DTS
+\`\`\`
+
+npm と相互運用でき、型定義 (.d.ts) で既存 JS を活用できる。`;
+
+  hr("put — Markdown ページを登録（複数セクション）");
+  call('store.put("typescript", { content: <markdown>, sources:[url] })');
+  const tsId = await store.put("typescript", {
+    content: tsPage,
     epistemic: "fact",
     sources: [
       { kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" },
     ],
   });
-  call('store.put("rust", { content, epistemic:"fact", sources:[url] })');
+  call('store.put("rust", { ... })');
   await store.put("rust", {
-    content: "Rust はメモリ安全性を所有権システムで保証するシステムプログラミング言語。",
+    content:
+      "# Rust\n\nRust はメモリ安全性を所有権システムで保証するシステムプログラミング言語。",
     epistemic: "fact",
     sources: [{ kind: "url", uri: "https://www.rust-lang.org/" }],
   });
-  call('store.put("python", { content, epistemic:"fact" })');
-  await store.put("python", {
-    content: "Python はデータ分析や機械学習で広く使われる動的型付け言語。",
-    epistemic: "fact",
-  });
-  console.log("3 件登録しました (typescript / rust / python)");
 
-  hr("hybridSearch — 「型システムを持つ言語」");
-  call('store.hybridSearch("型システムを持つ言語", 3)');
-  const results = await store.hybridSearch("型システムを持つ言語", 3);
+  hr("getChunks — ページがどう分割されたか");
+  call(`store.getChunks(${tsId})`);
+  for (const c of store.getChunks(tsId)) {
+    console.log(`  #${c.ordinal} [${c.headingPath ?? "-"}] ${c.text.slice(0, 40)}...`);
+  }
+
+  hr("hybridSearch — 「型推論」（チャンク粒度で返る）");
+  call('store.hybridSearch("型推論", 3)');
+  const results = await store.hybridSearch("型推論", 3);
   for (const r of results) {
     console.log(
-      `  [${r.score.toFixed(4)}] ${r.slug} (${r.epistemic}, 出典${r.sourceCount}件)\n` +
-        `      ${r.content}`
+      `  [${r.score.toFixed(4)}] ${r.slug}#${r.ordinal} (${r.headingPath ?? "-"}, 出典${r.sourceCount}件)\n` +
+        `      ${r.text.slice(0, 60)}`
     );
   }
 
-  hr("supersede（put による置換）— typescript を更新");
-  call('store.put("typescript", { content, epistemic:"fact", sources:[url] })');
+  hr("supersede（put による置換、未変更チャンクは embedding 再利用）");
+  call('store.put("typescript", { content: <1セクションだけ変更> })');
   await store.put("typescript", {
-    content:
-      "TypeScript は JavaScript のスーパーセットで、型推論とエディタ支援に優れる。",
+    content: tsPage.replace("エディタ支援が強力。", "エディタ支援が非常に強力。"),
     epistemic: "fact",
     sources: [
       { kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" },
@@ -106,7 +122,7 @@ async function main(): Promise<void> {
   });
   call('store.resolveSlug("typescript")');
   const live = store.resolveSlug("typescript");
-  console.log(`現行 live (id=${live?.id}): ${live?.content}`);
+  console.log(`現行 live (id=${live?.id}, ${live?.content.length}文字)`);
 
   hr("getHistory — typescript の版履歴");
   call('store.getHistory("typescript")');
