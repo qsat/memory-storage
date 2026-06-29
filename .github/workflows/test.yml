@@ -3,6 +3,10 @@ name: Test
 on:
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: write # for the coverage report comment
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -29,4 +33,15 @@ jobs:
         run: npm run typecheck
 
       - name: Run tests
+        if: matrix.node-version != '22.x'
         run: npm test
+
+      - name: Run tests with coverage
+        if: matrix.node-version == '22.x'
+        run: npm run coverage --workspace memory-storage
+
+      - name: Report coverage on PR
+        if: always() && matrix.node-version == '22.x'
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          working-directory: ./packages/core

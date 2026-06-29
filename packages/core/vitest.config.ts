@@ -6,7 +6,9 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**"],
       exclude: ["src/**/*.test.ts"],
-      reporter: ["text", "html"],
+      // text: console; json-summary + json: consumed by the PR coverage action.
+      reporter: ["text", "json-summary", "json", "html"],
+      reportOnFailure: true,
     },
   },
 });
