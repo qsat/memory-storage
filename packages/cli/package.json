@@ -5,10 +5,10 @@
   "private": true,
   "type": "module",
   "bin": {
-    "memory": "dist/cli.js"
+    "memory-storage": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node esbuild.config.mjs",
     "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit"
   },
@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0"
   },

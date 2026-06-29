@@ -8,7 +8,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace memory-storage && npm run build --workspace memory-storage-cli",
+    "build:release": "npm run build && node scripts/build-release.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run build --workspace memory-storage && npm run typecheck --workspaces --if-present",
     "check": "npm run build --workspace memory-storage && npm run check --workspace memory-storage-check",

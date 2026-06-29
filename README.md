@@ -151,7 +151,24 @@ store.close();
 書き込みは agent からの明示的な呼び出しを想定しています。CLI の各サブコマンドは、それ自体が
 監査可能な write gate になります（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) 参照）。
 
-リポジトリ内で実行する場合（ビルド不要、tsx 経由）:
+### グローバルインストール（`memory-storage` コマンド）
+
+GitHub Action が事前ビルドした単一バンドルを `release` ブランチに公開しています。**ユーザー側で
+ビルドは走りません**（`postinstall` なし）。ネイティブ依存（better-sqlite3 など）だけが通常どおり
+インストールされます。
+
+```bash
+npm i -g github:qsat/memory-storage#release
+memory-storage --help
+memory-storage put typescript -c "# TypeScript\n\nJS に型を加えた言語" --db ~/memory.db
+memory-storage search "型推論" --db ~/memory.db --json
+```
+
+> 仕組み: `release` ブランチのルートは、コア込みでバンドルした `cli.js` と、依存が
+> ネイティブ 3 パッケージだけの `package.json`（bin: `memory-storage`）からなる自己完結パッケージです。
+> `main` への push ごとに `.github/workflows/release.yml` が再ビルドして更新します。
+
+### リポジトリ内で実行（開発時・ビルド不要、tsx 経由）
 
 ```bash
 npm run cli -- put typescript -c "TypeScript は JS に型を加えた言語" -e fact \
@@ -160,12 +177,8 @@ npm run cli -- search "型システムを持つ言語" -k 5
 npm run cli -- history typescript
 ```
 
-ビルドして `memory` コマンドとして使う場合:
-
-```bash
-npm run build                       # packages/*/dist を生成（bin もリンクされる）
-./node_modules/.bin/memory --help   # もしくは npm link で memory をグローバルに
-```
+ローカルでバンドルを試す場合: `npm run build` で `packages/cli/dist/cli.js` を生成し、
+`node packages/cli/dist/cli.js --help`（または `npm link` で `memory-storage` をグローバルに）。
 
 ### サブコマンド
 

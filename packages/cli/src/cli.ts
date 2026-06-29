@@ -6,12 +6,13 @@
  * auditable write gate (see the guardrails in SKILL.md). Use --json for
  * machine-readable output.
  *
- *   memory put <slug> -c "<content>" [-e fact|inference|hypothesis] [-s kind:uri ...]
- *   memory search "<query>" [-k 10]
- *   memory resolve <slug>
- *   memory history <slug>
- *   memory evidence <knowledgeId>
- *   memory add-evidence <knowledgeId> -s kind:uri [-s ...]
+ *   memory-storage put <slug> -c "<content>" [-e fact|inference|hypothesis] [-s kind:uri ...]
+ *   memory-storage search "<query>" [-k 10]
+ *   memory-storage get <slug>
+ *   memory-storage resolve <slug>
+ *   memory-storage history <slug>
+ *   memory-storage evidence <pageId>
+ *   memory-storage add-evidence <pageId> -s kind:uri [-s ...]
  *
  * Global: --db <path> (or env MEMORY_DB, default "memory.db"), --json, --help
  */
@@ -25,16 +26,16 @@ import {
   type ModelProgress,
 } from "memory-storage";
 
-const HELP = `memory — local hybrid-search / RAG memory CLI
+const HELP = `memory-storage — local hybrid-search / RAG memory CLI
 
 Usage:
-  memory put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]
-  memory search <query> [-k <topK>]      chunk-level hybrid search
-  memory get <slug>                      print the page's full markdown
-  memory resolve <slug>                  page id + metadata
-  memory history <slug>
-  memory evidence <pageId>
-  memory add-evidence <pageId> -s <kind:uri> [-s ...]
+  memory-storage put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]
+  memory-storage search <query> [-k <topK>]      chunk-level hybrid search
+  memory-storage get <slug>                      print the page's full markdown
+  memory-storage resolve <slug>                  page id + metadata
+  memory-storage history <slug>
+  memory-storage evidence <pageId>
+  memory-storage add-evidence <pageId> -s <kind:uri> [-s ...]
 
 Options:
   -c, --content <text>       page markdown body (put)
