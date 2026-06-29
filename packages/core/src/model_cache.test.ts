@@ -13,11 +13,11 @@ vi.mock("@huggingface/transformers", () => ({
 // Reset module state so MODEL_CACHE_DIR is recomputed from env on each import.
 async function loadWith(
   cache: string | undefined
-): Promise<typeof import("./local_hybrid_search.js")> {
+): Promise<typeof import("./index.js")> {
   vi.resetModules();
   if (cache === undefined) delete process.env.MEMORY_MODEL_CACHE;
   else process.env.MEMORY_MODEL_CACHE = cache;
-  return import("./local_hybrid_search.js");
+  return import("./index.js");
 }
 
 describe("resolveUserPath", () => {

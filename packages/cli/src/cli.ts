@@ -29,14 +29,15 @@ const HELP = `memory — local hybrid-search / RAG memory CLI
 
 Usage:
   memory put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]
-  memory search <query> [-k <topK>]
-  memory resolve <slug>
+  memory search <query> [-k <topK>]      chunk-level hybrid search
+  memory get <slug>                      print the page's full markdown
+  memory resolve <slug>                  page id + metadata
   memory history <slug>
-  memory evidence <knowledgeId>
-  memory add-evidence <knowledgeId> -s <kind:uri> [-s ...]
+  memory evidence <pageId>
+  memory add-evidence <pageId> -s <kind:uri> [-s ...]
 
 Options:
-  -c, --content <text>       knowledge body (put)
+  -c, --content <text>       page markdown body (put)
   -e, --epistemic <value>    fact | inference | hypothesis (default: fact)
   -s, --source <kind:uri>    source spec; repeatable. Also accepts JSON:
                              '{"kind":"url","uri":"...","title":"...","locator":"..."}'
@@ -173,11 +174,21 @@ function main(): Promise<void> | void {
           results
             .map(
               (r) =>
-                `[${r.score.toFixed(4)}] ${r.slug} (${r.epistemic}, 出典${r.sourceCount}件)\n  ${r.content}`
+                `[${r.score.toFixed(4)}] ${r.slug}#${r.ordinal}` +
+                `${r.headingPath ? ` (${r.headingPath})` : ""}` +
+                ` [${r.epistemic}, 出典${r.sourceCount}件]\n  ${r.text}`
             )
-            .join("\n") || "(no results)",
+            .join("\n\n") || "(no results)",
           results
         );
+        break;
+      }
+
+      case "get": {
+        const slug = rest[0];
+        if (!slug) fail("get: missing <slug>");
+        const row = store.resolveSlug(slug);
+        emit(row ? row.content : "(not found)", row ?? null);
         break;
       }
 
@@ -185,7 +196,12 @@ function main(): Promise<void> | void {
         const slug = rest[0];
         if (!slug) fail("resolve: missing <slug>");
         const row = store.resolveSlug(slug);
-        emit(row ? `id=${row.id} ${row.content}` : "(not found)", row ?? null);
+        emit(
+          row
+            ? `id=${row.id} slug=${row.slug} epistemic=${row.epistemic} status=${row.status}`
+            : "(not found)",
+          row ?? null
+        );
         break;
       }
 
