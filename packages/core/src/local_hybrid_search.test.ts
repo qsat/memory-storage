@@ -5,6 +5,7 @@ const mockEmbed = vi.fn<(text: string, opts: Record<string, unknown>) => Promise
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(async () => mockEmbed),
+  env: {}, // core sets env.cacheDir at module load
 }));
 
 import { MemoryStore } from "./local_hybrid_search.js";
@@ -187,6 +188,16 @@ describe("MemoryStore", () => {
       await store.put("anything", { content: "Some content here" });
       expect(await store.hybridSearch("content", 0)).toEqual([]);
       expect(await store.hybridSearch("content", -5)).toEqual([]);
+    });
+
+    it("handles very short queries without throwing (FTS skipped)", async () => {
+      await store.put("a-doc", {
+        content: "短いクエリでも落ちないことを確認するドキュメント",
+      });
+      // 1-char query: escapeFtsQuery returns "" (< 3 chars) so FTS is skipped
+      // and only the vector search runs.
+      const results = await store.hybridSearch("あ", 5);
+      expect(Array.isArray(results)).toBe(true);
     });
 
     it("excludes stale entries", async () => {

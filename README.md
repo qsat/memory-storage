@@ -24,12 +24,14 @@
 packages/
 ├─ core/     memory-storage ライブラリ本体
 │  └─ src/local_hybrid_search.ts
+├─ cli/      CLI（memory コマンド）— memory-storage-cli
+│  └─ src/cli.ts
 └─ check/    実埋め込みモデルでの動作チェックツール（memory-storage-check）
    └─ src/check.ts
 ```
 
 ルートは private なワークスペースルートで、`build` / `test` / `typecheck` を各ワークスペースに
-委譲します。`check` はライブラリをパッケージ名 `memory-storage` で import します。
+委譲します。`cli` / `check` はライブラリをパッケージ名 `memory-storage` で import します。
 
 ## 必要環境
 
@@ -82,9 +84,21 @@ npm run check
 |---|---|---|
 | `MEMORY_EMBEDDING_MODEL` | `sirasagi62/ruri-v3-310m-ONNX` | HuggingFace の ONNX リポジトリ ID |
 | `MEMORY_EMBEDDING_DTYPE` | `q8` | 量子化（`fp32` / `fp16` / `q8` など。repo に存在するもの） |
+| `MEMORY_MODEL_CACHE` | `~/.cache/memory-storage` | モデルのダウンロード先（`~`/絶対/相対パスを解釈） |
 
 > 出力次元は 768 に固定です（全ベクトルに焼き付くため）。モデルを変える場合も 768 次元のものを
 > 選び、既存データがあるときは全件 re-embed が必要です（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) のガードレール参照）。
+
+#### モデルのキャッシュ先
+
+埋め込みモデルは既定で **`~/.cache/memory-storage`** にダウンロードされます（`node_modules` の外なので
+`npm install` や `node_modules` 削除でも消えず、再ダウンロード不要）。`MEMORY_MODEL_CACHE` で変更でき、
+パスは `--db` と同じ規則で解釈されます（`~` はホーム展開、絶対パスはそのまま、相対パスは実行ディレクトリ基準）。
+起動時に実際のキャッシュ先が表示されます。
+
+**ディレクトリ作成のガード**: キャッシュ先が `~/.cache` 配下なら自動作成しますが、**それ以外の場所は
+自動作成しません**。存在しない場合はエラー終了します（typo した `MEMORY_MODEL_CACHE` が任意の場所に
+数百 MB をばらまくのを防ぐため）。`~/.cache` 外を使うときは事前に `mkdir -p` してください。
 
 ### 3. ビルド（配布用 dist の生成・任意）
 
@@ -121,6 +135,51 @@ const history = store.getHistory("typescript");
 
 store.close();
 ```
+
+## CLI（`memory` コマンド）
+
+書き込みは agent からの明示的な呼び出しを想定しています。CLI の各サブコマンドは、それ自体が
+監査可能な write gate になります（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) 参照）。
+
+リポジトリ内で実行する場合（ビルド不要、tsx 経由）:
+
+```bash
+npm run cli -- put typescript -c "TypeScript は JS に型を加えた言語" -e fact \
+  -s url:https://www.typescriptlang.org/
+npm run cli -- search "型システムを持つ言語" -k 5
+npm run cli -- history typescript
+```
+
+ビルドして `memory` コマンドとして使う場合:
+
+```bash
+npm run build                       # packages/*/dist を生成（bin もリンクされる）
+./node_modules/.bin/memory --help   # もしくは npm link で memory をグローバルに
+```
+
+### サブコマンド
+
+| コマンド | 説明 |
+|---|---|
+| `put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]` | 新規 or 置換 |
+| `search <query> [-k <topK>]` | ハイブリッド検索 |
+| `resolve <slug>` | 最新 live を取得 |
+| `history <slug>` | 版履歴 |
+| `evidence <knowledgeId>` | 出典一覧 |
+| `add-evidence <knowledgeId> -s <kind:uri> [-s ...]` | 出典追加 |
+
+共通オプション: `--db <path>`（既定: env `MEMORY_DB` または `memory.db`）、
+`--json`（機械可読出力。agent はこちらを使用）、`-h/--help`。
+
+`--db` の相対パスは**コマンドを実行したディレクトリ基準**で解決されます（`npm run` は cwd を
+`packages/cli` に変えますが、`memory` が実行された元ディレクトリを使うため意図どおりの場所に作られます）。
+解決後の DB パスは起動時に stderr に表示されます。`:memory:` はプロセス終了で消えるため CLI では非推奨です。
+
+`-s/--source` は `kind:uri` の略記、または JSON
+（`'{"kind":"url","uri":"...","title":"...","locator":"..."}'`）を受け付けます。
+`kind` は `file` / `url` / `conversation` / `tool` / `other`。
+
+> 初回実行時はモデルのダウンロードが走り、進捗が stderr に表示されます（`--json` の stdout は汚しません）。
 
 ## 公開 API
 

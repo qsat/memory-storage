@@ -14,7 +14,12 @@
  *
  *   MEMORY_EMBEDDING_MODEL=<onnx-repo> MEMORY_EMBEDDING_DTYPE=fp32 npm run check
  */
-import { MemoryStore } from "memory-storage";
+import {
+  MemoryStore,
+  onModelProgress,
+  MODEL_CACHE_DIR,
+  type ModelProgress,
+} from "memory-storage";
 
 const dbPath = process.argv[2] ?? ":memory:";
 
@@ -34,7 +39,26 @@ async function main(): Promise<void> {
     `Model: ${process.env.MEMORY_EMBEDDING_MODEL ?? "(default ONNX repo)"}` +
       ` / dtype: ${process.env.MEMORY_EMBEDDING_DTYPE ?? "q8"}`
   );
+  console.log(`Cache: ${MODEL_CACHE_DIR}`);
   console.log("Loading embedding model (first run downloads it)...");
+
+  // Files download concurrently; emit one line per file at 25% milestones.
+  let downloading = false;
+  const lastBucket = new Map<string, number>();
+  onModelProgress((p: ModelProgress) => {
+    if (p.status !== "progress" || typeof p.progress !== "number" || !p.file) {
+      return;
+    }
+    if (!downloading) {
+      console.log("⏳ モデルをダウンロード中 (初回のみ)...");
+      downloading = true;
+    }
+    const bucket = Math.min(4, Math.floor(p.progress / 25));
+    if (lastBucket.get(p.file) !== bucket) {
+      lastBucket.set(p.file, bucket);
+      process.stderr.write(`  ${p.file}: ${bucket * 25}%\n`);
+    }
+  });
 
   const store = new MemoryStore(dbPath);
 
