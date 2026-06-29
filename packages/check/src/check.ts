@@ -18,8 +18,14 @@ import { MemoryStore } from "memory-storage";
 
 const dbPath = process.argv[2] ?? ":memory:";
 
+/** Section header. */
 function hr(label: string): void {
   console.log(`\n=== ${label} ===`);
+}
+
+/** Log the API method that is about to run. */
+function call(signature: string): void {
+  console.log(`→ ${signature}`);
 }
 
 async function main(): Promise<void> {
@@ -32,7 +38,8 @@ async function main(): Promise<void> {
 
   const store = new MemoryStore(dbPath);
 
-  hr("put: 知識を登録");
+  hr("put — 知識を登録");
+  call('store.put("typescript", { content, epistemic:"fact", sources:[url] })');
   await store.put("typescript", {
     content: "TypeScript は JavaScript に静的型付けを加えた言語で、大規模開発に向く。",
     epistemic: "fact",
@@ -40,18 +47,21 @@ async function main(): Promise<void> {
       { kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" },
     ],
   });
+  call('store.put("rust", { content, epistemic:"fact", sources:[url] })');
   await store.put("rust", {
     content: "Rust はメモリ安全性を所有権システムで保証するシステムプログラミング言語。",
     epistemic: "fact",
     sources: [{ kind: "url", uri: "https://www.rust-lang.org/" }],
   });
+  call('store.put("python", { content, epistemic:"fact" })');
   await store.put("python", {
     content: "Python はデータ分析や機械学習で広く使われる動的型付け言語。",
     epistemic: "fact",
   });
   console.log("3 件登録しました (typescript / rust / python)");
 
-  hr("hybridSearch: 「型システムを持つ言語」");
+  hr("hybridSearch — 「型システムを持つ言語」");
+  call('store.hybridSearch("型システムを持つ言語", 3)');
   const results = await store.hybridSearch("型システムを持つ言語", 3);
   for (const r of results) {
     console.log(
@@ -60,7 +70,8 @@ async function main(): Promise<void> {
     );
   }
 
-  hr("supersede: typescript を更新");
+  hr("supersede（put による置換）— typescript を更新");
+  call('store.put("typescript", { content, epistemic:"fact", sources:[url] })');
   await store.put("typescript", {
     content:
       "TypeScript は JavaScript のスーパーセットで、型推論とエディタ支援に優れる。",
@@ -69,18 +80,21 @@ async function main(): Promise<void> {
       { kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" },
     ],
   });
+  call('store.resolveSlug("typescript")');
   const live = store.resolveSlug("typescript");
   console.log(`現行 live (id=${live?.id}): ${live?.content}`);
 
-  hr("getHistory: typescript の版履歴");
+  hr("getHistory — typescript の版履歴");
+  call('store.getHistory("typescript")');
   for (const h of store.getHistory("typescript")) {
     console.log(
       `  id=${h.id} status=${h.status} superseded_by=${h.superseded_by ?? "-"}`
     );
   }
 
-  hr("getEvidence: typescript の出典");
+  hr("getEvidence — typescript の出典");
   if (live) {
+    call(`store.getEvidence(${live.id})`);
     for (const e of store.getEvidence(live.id)) {
       console.log(`  ${e.kind}: ${e.uri}${e.title ? ` (${e.title})` : ""}`);
     }
