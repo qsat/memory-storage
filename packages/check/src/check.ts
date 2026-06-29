@@ -9,7 +9,7 @@
  *   npm run check                 # in-memory DB
  *   npm run check -- ./memory.db  # persist to a file you can inspect
  */
-import { MemoryStore } from "../../src/local_hybrid_search.js";
+import { MemoryStore } from "memory-storage";
 
 const dbPath = process.argv[2] ?? ":memory:";
 

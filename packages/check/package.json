@@ -8,6 +8,9 @@
     "check": "tsx src/check.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "memory-storage": "*"
+  },
   "devDependencies": {
     "tsx": "^4.19.0"
   }
