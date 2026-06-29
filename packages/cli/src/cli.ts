@@ -19,6 +19,7 @@ import { parseArgs } from "node:util";
 import {
   MemoryStore,
   onModelProgress,
+  MODEL_CACHE_DIR,
   type SourceInput,
   type ModelProgress,
 } from "memory-storage";
@@ -84,7 +85,9 @@ function installProgressReporter(): void {
       return;
     }
     if (!announced) {
-      process.stderr.write("⏳ 埋め込みモデルをダウンロード中 (初回のみ)...\n");
+      process.stderr.write(
+        `⏳ 埋め込みモデルをダウンロード中 (初回のみ) → ${MODEL_CACHE_DIR}\n`
+      );
       announced = true;
     }
     const bucket = Math.min(4, Math.floor(p.progress / 25)); // 0,25,50,75,100

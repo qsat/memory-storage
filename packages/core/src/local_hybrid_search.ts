@@ -1,7 +1,10 @@
+import os from "node:os";
+import path from "node:path";
 import Database from "better-sqlite3";
 import * as sqliteVec from "sqlite-vec";
 import {
   pipeline,
+  env as transformersEnv,
   type FeatureExtractionPipeline,
 } from "@huggingface/transformers";
 
@@ -92,6 +95,30 @@ const QUERY_PREFIX = "検索クエリ: ";
 const DOC_PREFIX = "検索文書: ";
 const RRF_K = 60;
 const DEFAULT_TOP_K = 10;
+
+// ---------------------------------------------------------------------------
+// Model cache location
+// ---------------------------------------------------------------------------
+
+/** Resolve `~`-prefixed paths against the user's home directory. */
+function expandHome(p: string): string {
+  if (p === "~") return os.homedir();
+  if (p.startsWith("~/")) return path.join(os.homedir(), p.slice(2));
+  return p;
+}
+
+/**
+ * Where the embedding model is cached on disk. Defaults to a stable directory
+ * outside the project so it survives `npm install` / removing node_modules.
+ * Override with MEMORY_MODEL_CACHE.
+ */
+export const MODEL_CACHE_DIR = expandHome(
+  process.env.MEMORY_MODEL_CACHE ??
+    path.join(os.homedir(), ".cache", "memory-storage")
+);
+
+// transformers.js has no env var for this, so set it before any model load.
+transformersEnv.cacheDir = MODEL_CACHE_DIR;
 
 // ---------------------------------------------------------------------------
 // Embedder (singleton)

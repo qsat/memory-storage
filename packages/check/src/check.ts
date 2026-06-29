@@ -14,7 +14,12 @@
  *
  *   MEMORY_EMBEDDING_MODEL=<onnx-repo> MEMORY_EMBEDDING_DTYPE=fp32 npm run check
  */
-import { MemoryStore, onModelProgress, type ModelProgress } from "memory-storage";
+import {
+  MemoryStore,
+  onModelProgress,
+  MODEL_CACHE_DIR,
+  type ModelProgress,
+} from "memory-storage";
 
 const dbPath = process.argv[2] ?? ":memory:";
 
@@ -34,6 +39,7 @@ async function main(): Promise<void> {
     `Model: ${process.env.MEMORY_EMBEDDING_MODEL ?? "(default ONNX repo)"}` +
       ` / dtype: ${process.env.MEMORY_EMBEDDING_DTYPE ?? "q8"}`
   );
+  console.log(`Cache: ${MODEL_CACHE_DIR}`);
   console.log("Loading embedding model (first run downloads it)...");
 
   // Files download concurrently; emit one line per file at 25% milestones.

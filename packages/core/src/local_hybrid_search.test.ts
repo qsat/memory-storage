@@ -5,6 +5,7 @@ const mockEmbed = vi.fn<(text: string, opts: Record<string, unknown>) => Promise
 
 vi.mock("@huggingface/transformers", () => ({
   pipeline: vi.fn(async () => mockEmbed),
+  env: {}, // core sets env.cacheDir at module load
 }));
 
 import { MemoryStore } from "./local_hybrid_search.js";

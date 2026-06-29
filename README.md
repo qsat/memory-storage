@@ -84,9 +84,16 @@ npm run check
 |---|---|---|
 | `MEMORY_EMBEDDING_MODEL` | `sirasagi62/ruri-v3-310m-ONNX` | HuggingFace の ONNX リポジトリ ID |
 | `MEMORY_EMBEDDING_DTYPE` | `q8` | 量子化（`fp32` / `fp16` / `q8` など。repo に存在するもの） |
+| `MEMORY_MODEL_CACHE` | `~/.cache/memory-storage` | モデルのダウンロード先（`~` はホーム展開） |
 
 > 出力次元は 768 に固定です（全ベクトルに焼き付くため）。モデルを変える場合も 768 次元のものを
 > 選び、既存データがあるときは全件 re-embed が必要です（[SKILL.md](.claude/skills/local-hybrid-search/SKILL.md) のガードレール参照）。
+
+#### モデルのキャッシュ先
+
+埋め込みモデルは既定で **`~/.cache/memory-storage`** にダウンロードされます（`node_modules` の外なので
+`npm install` や `node_modules` 削除でも消えず、再ダウンロード不要）。`MEMORY_MODEL_CACHE` で変更できます。
+起動時に実際のキャッシュ先がログ表示されます。
 
 ### 3. ビルド（配布用 dist の生成・任意）
 
