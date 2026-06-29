@@ -15,6 +15,8 @@
  *
  * Global: --db <path> (or env MEMORY_DB, default "memory.db"), --json, --help
  */
+import os from "node:os";
+import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   MemoryStore,
@@ -54,6 +56,21 @@ const SOURCE_KINDS = new Set(["file", "url", "conversation", "tool", "other"]);
 function fail(msg: string): never {
   process.stderr.write(`error: ${msg}\n`);
   process.exit(1);
+}
+
+/**
+ * Resolve the --db path. Relative paths resolve against the directory the user
+ * ran the command from, not the process cwd: `npm run` switches cwd into the
+ * workspace package, but sets INIT_CWD to the original invocation directory.
+ * When run as the `memory` bin directly, INIT_CWD is unset and cwd is correct.
+ */
+function resolveDbPath(raw: string): string {
+  if (raw === ":memory:") return raw;
+  let p = raw;
+  if (p === "~") p = os.homedir();
+  else if (p.startsWith("~/")) p = path.join(os.homedir(), p.slice(2));
+  if (path.isAbsolute(p)) return p;
+  return path.resolve(process.env.INIT_CWD ?? process.cwd(), p);
 }
 
 /** Parse a --source value: "kind:uri" shorthand or a JSON object. */
@@ -126,8 +143,11 @@ function main(): Promise<void> | void {
     return;
   }
 
-  const dbPath = (values.db as string) ?? process.env.MEMORY_DB ?? "memory.db";
+  const dbPath = resolveDbPath(
+    (values.db as string) ?? process.env.MEMORY_DB ?? "memory.db"
+  );
   const asJson = Boolean(values.json);
+  process.stderr.write(`DB: ${dbPath}\n`); // stderr keeps --json stdout clean
 
   const emit = (human: string, data: unknown): void => {
     process.stdout.write(asJson ? JSON.stringify(data) + "\n" : human + "\n");
