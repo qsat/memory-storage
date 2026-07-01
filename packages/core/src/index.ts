@@ -23,6 +23,7 @@ export { chunkMarkdown, CHUNK_MAX_CHARS } from "./chunk.js";
 export type {
   SourceInput,
   PutOptions,
+  PutResult,
   PageRow,
   ChunkRow,
   SearchResult,
