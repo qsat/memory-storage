@@ -192,6 +192,7 @@ npm run cli -- history typescript
 | `get <slug>` | ページの全文 Markdown を出力（復元） |
 | `resolve <slug>` | ページの id / メタ情報 |
 | `history <slug>` | 版履歴 |
+| `chunk <chunkId> [--context <n>]` | チャンク単体表示（`--context` で前後 n 件を含める）。**live のみ**解決可能 |
 | `evidence <pageId>` | 出典一覧 |
 | `add-evidence <pageId> -s <kind:uri> [-s ...]` | 出典追加 |
 
@@ -211,7 +212,8 @@ npm run cli -- history typescript
 ## 公開 API
 
 > ID 体系: `page.id` は **UUIDv7**（時系列順 = 作成順にソート可能）。`chunk.id` は fts5/vec0 の
-> rowid 制約のため整数で、安定外部 ID として `chunk.uuid`（UUIDv7）を併記します。
+> rowid 制約のため整数（`AUTOINCREMENT` で再利用されない）で、安定外部 ID として
+> `chunk.uuid`（UUIDv7）を併記します。
 
 | 関数 | 役割 |
 |---|---|
@@ -219,6 +221,8 @@ npm run cli -- history typescript
 | `addEvidence(pageId, source)` | 出典追加 / 再裏付け（強化）。鮮度も更新 |
 | `resolveSlug(slug)` | 最新 live ページ（全文 content）を返す |
 | `getChunks(pageId)` | ページのチャンク一覧（ordinal 順） |
+| `getChunkById(chunkId)` | チャンク単体＋親ページのメタ情報。**live のみ**解決可能（stale 版のチャンクは削除済みで解決しない） |
+| `getChunkNeighbors(chunkId, radius?)` | 対象チャンク＋前後 `radius` 件（既定 1）を ordinal 昇順で返す。ページ境界でクランプ |
 | `hybridSearch(query, topK?)` | live のみ。**チャンク粒度**で `slug`/`ordinal`/`headingPath`/`text`/`sourceCount`/`lastConfirmedAt` 付き |
 | `getEvidence(pageId)` | 出典一覧 |
 | `getHistory(slug)` | 版履歴（古い順、live が現行） |

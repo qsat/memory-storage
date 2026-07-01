@@ -29,6 +29,7 @@ export type {
   PutResult,
   PageRow,
   ChunkRow,
+  ChunkDetail,
   SearchResult,
   PageSearchGroup,
   EvidenceRow,

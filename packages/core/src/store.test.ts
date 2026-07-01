@@ -163,6 +163,86 @@ describe("MemoryStore", () => {
     });
   });
 
+  describe("getChunkById", () => {
+    it("returns the chunk with its parent page's metadata", async () => {
+      const { id } = await store.put("ts", {
+        content: "# TS\n\nintro\n\n## Deep dive\n\nmore detail here",
+        sources: [{ kind: "url", uri: "https://ts.example" }],
+      });
+      const [c0, c1] = store.getChunks(id);
+      const detail = store.getChunkById(c1.id);
+      expect(detail).toBeDefined();
+      expect(detail!.chunkId).toBe(c1.id);
+      expect(detail!.chunkUuid).toBe(c1.uuid);
+      expect(detail!.pageId).toBe(id);
+      expect(detail!.slug).toBe("ts");
+      expect(detail!.ordinal).toBe(c1.ordinal);
+      expect(detail!.headingPath).toBe("TS > Deep dive");
+      expect(detail!.text).toContain("more detail here");
+      expect(detail!.embedHash).toBeTruthy();
+      expect(detail!.sourceCount).toBe(1);
+      // sanity: the other chunk exists and is distinct
+      expect(c0.id).not.toBe(c1.id);
+    });
+
+    it("returns undefined for an unknown chunk id", () => {
+      expect(store.getChunkById(999999)).toBeUndefined();
+    });
+
+    it("does not resolve chunks from a superseded page version", async () => {
+      const v1 = await store.put("doc", { content: "# A\n\nold body" });
+      const [oldChunk] = store.getChunks(v1.id);
+      await store.put("doc", { content: "# A\n\nnew body" });
+      // v1's chunk row was deleted on supersession.
+      expect(store.getChunkById(oldChunk.id)).toBeUndefined();
+    });
+  });
+
+  describe("getChunkNeighbors", () => {
+    it("returns [] for an unknown chunk id", () => {
+      expect(store.getChunkNeighbors(999999)).toEqual([]);
+    });
+
+    it("includes the target chunk and its neighbors within radius, ordinal ascending", async () => {
+      const { id } = await store.put("multi", {
+        content: "# A\n\naaa\n\n# B\n\nbbb\n\n# C\n\nccc\n\n# D\n\nddd\n\n# E\n\neee",
+      });
+      const chunks = store.getChunks(id); // ordinals 0..4
+      const middle = chunks[2]; // ordinal 2 ("C")
+      const neighbors = store.getChunkNeighbors(middle.id, 1);
+      expect(neighbors.map((n) => n.ordinal)).toEqual([1, 2, 3]);
+      expect(neighbors.map((n) => n.chunkId)).toContain(middle.id);
+    });
+
+    it("clamps at the start of the page (no negative ordinal)", async () => {
+      const { id } = await store.put("multi2", {
+        content: "# A\n\naaa\n\n# B\n\nbbb\n\n# C\n\nccc",
+      });
+      const [first] = store.getChunks(id); // ordinal 0
+      const neighbors = store.getChunkNeighbors(first.id, 2);
+      expect(neighbors.map((n) => n.ordinal)).toEqual([0, 1, 2]);
+    });
+
+    it("clamps at the end of the page", async () => {
+      const { id } = await store.put("multi3", {
+        content: "# A\n\naaa\n\n# B\n\nbbb\n\n# C\n\nccc",
+      });
+      const chunks = store.getChunks(id);
+      const last = chunks[chunks.length - 1]; // ordinal 2
+      const neighbors = store.getChunkNeighbors(last.id, 5);
+      expect(neighbors.map((n) => n.ordinal)).toEqual([0, 1, 2]);
+    });
+
+    it("defaults to radius 1", async () => {
+      const { id } = await store.put("multi4", {
+        content: "# A\n\naaa\n\n# B\n\nbbb\n\n# C\n\nccc",
+      });
+      const chunks = store.getChunks(id);
+      const neighbors = store.getChunkNeighbors(chunks[1].id);
+      expect(neighbors.map((n) => n.ordinal)).toEqual([0, 1, 2]);
+    });
+  });
+
   describe("hybridSearch", () => {
     it("returns chunk-level results carrying page metadata", async () => {
       await store.put("ts", {
