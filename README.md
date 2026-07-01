@@ -195,6 +195,7 @@ npm run cli -- history typescript
 | `chunk <chunkId> [--context <n>]` | チャンク単体表示（`--context` で前後 n 件を含める）。**live のみ**解決可能 |
 | `evidence <pageId>` | 出典一覧 |
 | `add-evidence <pageId> -s <kind:uri> [-s ...]` | 出典追加 |
+| `dump (<slug> \| --id <pageId> \| --all) --out <dir> [--include-stale]` | ページを Markdown ファイルへ書き出し（下記） |
 
 共通オプション: `--db <path>`（既定: env `MEMORY_DB` または `memory.db`）、
 `--json`（機械可読出力。agent はこちらを使用）、`-h/--help`。
@@ -208,6 +209,28 @@ npm run cli -- history typescript
 `kind` は `file` / `url` / `conversation` / `tool` / `other`。
 
 > 初回実行時はモデルのダウンロードが走り、進捗が stderr に表示されます（`--json` の stdout は汚しません）。
+
+### `dump` について
+
+ページを Markdown ファイルとして書き出し、外部での閲覧・バックアップ・バージョン管理を可能にします。
+
+```bash
+memory-storage dump typescript --out ./exported          # 1 slug の現行 live 版
+memory-storage dump --id <pageId> --out ./exported        # 特定版（stale も可）
+memory-storage dump --all --out ./exported                 # 全 slug の現行 live 版
+memory-storage dump typescript --out ./exported --include-stale  # その slug の全版
+memory-storage dump --all --out ./exported --include-stale       # 全ページの全版
+```
+
+- `<slug>` / `--id` / `--all` は**排他**（いずれか 1 つを指定）。
+- ファイル名は **`doc-{slug}-{id}.md`**。slug 中の `/` は `__` に、その他のファイル名不可文字は `_` に置換。
+- 各ファイルは **YAML front-matter**（`id`/`slug`/`status`/`epistemic`/`created_at`/`last_confirmed_at`/
+  `superseded_at`/`superseded_by`/`evidence`）に続けて全文 `content` を出力。
+- `--out` は未存在なら自動作成（`--db`/モデルキャッシュとは異なるガード方針: ユーザーが明示的に指定した
+  書き込み先のため、typo 対策の禁止ルールは適用しません）。
+- **書き込みのみ**（re-import は未実装）。素朴に「次の `---` 行を探す」パーサーは、本文中の
+  水平線（`---`）と front-matter の終端を混同する可能性があるため、将来 import を作る際は
+  YAML を正しく構文解析するリーダーが必要です。
 
 ## 公開 API
 
@@ -227,7 +250,9 @@ npm run cli -- history typescript
 | `hybridSearch(query, topK?)` | live のみ。**チャンク粒度**で `slug`/`ordinal`/`headingPath`/`text`/`sourceCount`/`lastConfirmedAt` 付き |
 | `getEvidence(pageId)` | 出典一覧 |
 | `getHistory(slug)` | 版履歴（古い順、live が現行） |
+| `listPages()` | 全ページ全版の `{id, slug, status}` 一覧（content 無し、slug→作成順でソート） |
 | `groupSearchResultsByPage(results)` | `hybridSearch` の結果をページ単位でまとめ、各ページ内は `ordinal` 昇順（読み順）に整列する純粋関数 |
+| `dumpFileName(slug, id)` / `formatDumpFile(page, evidence)` | dump ファイル名・本文（front-matter＋content）を生成する純粋関数。ファイル書き込みは行わない |
 
 ### 並び順（ordinal）について
 

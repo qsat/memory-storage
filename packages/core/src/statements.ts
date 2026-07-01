@@ -44,6 +44,10 @@ export function prepareStatements(db: Database.Database): Statements {
       `SELECT id, status, epistemic, superseded_by, created_at, superseded_at
        FROM page WHERE slug = @slug ORDER BY created_at ASC`
     ),
+    /** Every page version's identity (no content) — for enumerating all pages. */
+    listPages: db.prepare(
+      `SELECT id, slug, status FROM page ORDER BY slug ASC, created_at ASC`
+    ),
 
     // ---- chunks ------------------------------------------------------------
     insertChunk: db.prepare(`

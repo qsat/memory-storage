@@ -14,19 +14,25 @@
  *   memory-storage chunk <chunkId> [--context N]
  *   memory-storage evidence <pageId>
  *   memory-storage add-evidence <pageId> -s kind:uri [-s ...]
+ *   memory-storage dump (<slug> | --id <pageId> | --all) --out <dir> [--include-stale]
  *
  * Global: --db <path> (or env MEMORY_DB, default "memory.db"), --json, --help
  */
+import fs from "node:fs";
+import path from "node:path";
 import { parseArgs } from "node:util";
 import {
   MemoryStore,
   onModelProgress,
   resolveUserPath,
   groupSearchResultsByPage,
+  dumpFileName,
+  formatDumpFile,
   MODEL_CACHE_DIR,
   type SourceInput,
   type ModelProgress,
   type PageRow,
+  type PageSummary,
 } from "memory-storage";
 
 const HELP = `memory-storage — local hybrid-search / RAG memory for an LLM wiki
@@ -91,6 +97,23 @@ COMMANDS
   evidence <pageId>     List a page's sources.
   add-evidence <pageId> -s <kind:uri> [-s ...]   Attach/refresh sources.
 
+  dump (<slug> | --id <pageId> | --all) --out <dir> [--include-stale]
+                        Write page(s) to Markdown files as
+                        doc-{slug}-{id}.md, each with a YAML front-matter
+                        header (id, slug, status, epistemic, created_at,
+                        last_confirmed_at, superseded_at, superseded_by,
+                        evidence) followed by the full content. Creates
+                        --out if missing. Exactly one of <slug>/--id/--all
+                        is required.
+                        <slug>          → that slug's current live page
+                        --id <pageId>   → that exact version (live or stale)
+                        --all           → every page's current live version
+                        --include-stale → with <slug> or --all, also dump
+                                          every stale (superseded) version
+      → writing only; there is no re-import command yet. A naive reader that
+        scans for the next literal "---" rather than parsing YAML could be
+        confused by a "---" inside the page content (e.g. a Markdown rule).
+
 OPTIONS
   -c, --content <text>     page Markdown body (put)
   -e, --epistemic <value>  fact | inference | hypothesis (default: fact)
@@ -100,8 +123,12 @@ OPTIONS
   -k, --top-k <n>          number of search results (default: 10)
       --group-by-page      search: group hits by page in reading order
       --context <n>        chunk: include ±n neighboring chunks (default: 0)
-      --id <pageId>        get/resolve: target a specific version (live or
-                           stale) instead of <slug>'s current live page
+      --id <pageId>        get/resolve/dump: target a specific version (live
+                           or stale) instead of <slug>'s current live page
+      --all                dump: every page's current live version
+      --include-stale      dump: also include superseded versions
+      --out <dir>          dump: output directory (created if missing).
+                           Resolved like --db (relative to your current dir).
       --db <path>          SQLite file; default env MEMORY_DB or "memory.db".
                            Relative paths resolve from your current directory.
       --json               machine-readable JSON on stdout
@@ -230,6 +257,9 @@ function main(): Promise<void> | void {
         "group-by-page": { type: "boolean" },
         context: { type: "string" },
         id: { type: "string" },
+        all: { type: "boolean" },
+        "include-stale": { type: "boolean" },
+        out: { type: "string" },
         db: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -384,6 +414,64 @@ function main(): Promise<void> | void {
                 .join("\n\n")
             : "(not found — chunk id must belong to the current live page version)",
           chunks
+        );
+        break;
+      }
+
+      case "dump": {
+        const idFlag = values.id as string | undefined;
+        const allFlag = Boolean(values.all);
+        const slug = rest[0];
+        const includeStale = Boolean(values["include-stale"]);
+        const outRaw = values.out as string | undefined;
+
+        const selectorCount = [Boolean(idFlag), allFlag, Boolean(slug)].filter(
+          Boolean
+        ).length;
+        if (selectorCount !== 1) {
+          fail("dump: specify exactly one of <slug>, --id <pageId>, or --all");
+        }
+        if (!outRaw) fail("dump: missing --out <dir>");
+        const outDir = resolveUserPath(outRaw);
+
+        const targets: PageRow[] = [];
+        if (idFlag) {
+          const p = store.getPageById(idFlag);
+          if (!p) fail(`dump: no such page id: ${idFlag}`);
+          targets.push(p);
+        } else if (slug) {
+          const live = store.resolveSlug(slug);
+          if (!live) fail(`dump: no such slug: ${slug}`);
+          targets.push(live);
+          if (includeStale) {
+            for (const h of store.getHistory(slug)) {
+              if (h.status !== "stale") continue;
+              const p = store.getPageById(h.id);
+              if (p) targets.push(p);
+            }
+          }
+        } else {
+          const summaries: PageSummary[] = store
+            .listPages()
+            .filter((p) => includeStale || p.status === "live");
+          for (const s of summaries) {
+            const p = store.getPageById(s.id);
+            if (p) targets.push(p);
+          }
+        }
+
+        fs.mkdirSync(outDir, { recursive: true });
+        const written = targets.map((p) => {
+          const filePath = path.join(outDir, dumpFileName(p.slug, p.id));
+          fs.writeFileSync(filePath, formatDumpFile(p, store.getEvidence(p.id)));
+          return { id: p.id, slug: p.slug, status: p.status, path: filePath };
+        });
+
+        emit(
+          written.length
+            ? written.map((w) => w.path).join("\n")
+            : "(nothing to dump)",
+          written
         );
         break;
       }

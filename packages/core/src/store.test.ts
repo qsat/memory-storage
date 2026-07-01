@@ -322,6 +322,26 @@ describe("MemoryStore", () => {
     });
   });
 
+  describe("listPages", () => {
+    it("returns [] for an empty store", () => {
+      expect(store.listPages()).toEqual([]);
+    });
+
+    it("lists every version of every page, sorted by slug", async () => {
+      const v1 = await store.put("b", { content: "# B\n\n1" });
+      const v2 = await store.put("b", { content: "# B\n\n2" });
+      await store.put("a", { content: "# A\n\n1" });
+
+      const pages = store.listPages();
+      expect(pages).toHaveLength(3);
+      expect(pages.map((p) => p.slug)).toEqual(["a", "b", "b"]);
+
+      const bVersions = pages.filter((p) => p.slug === "b");
+      expect(bVersions.map((p) => p.id)).toEqual([v1.id, v2.id]);
+      expect(bVersions.map((p) => p.status)).toEqual(["stale", "live"]);
+    });
+  });
+
   describe("epistemic status", () => {
     it("defaults to fact and stores other values", async () => {
       await store.put("f", { content: "# F\n\nx" });
