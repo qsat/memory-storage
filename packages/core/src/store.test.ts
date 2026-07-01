@@ -37,9 +37,17 @@ describe("MemoryStore", () => {
   afterEach(() => store.close());
 
   describe("put", () => {
-    it("creates a page and returns its id", async () => {
+    it("creates a page and returns its UUIDv7 id", async () => {
       const id = await store.put("ts", { content: "# TS\n\ncontent" });
-      expect(id).toBeGreaterThan(0);
+      expect(id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+      );
+    });
+
+    it("returns time-ordered ids (newer sorts greater)", async () => {
+      const a = await store.put("p1", { content: "# A\n\nx" });
+      const b = await store.put("p2", { content: "# B\n\ny" });
+      expect(b > a).toBe(true); // UUIDv7 is monotonic / time-ordered
     });
 
     it("rejects empty content", async () => {
@@ -65,12 +73,15 @@ describe("MemoryStore", () => {
       const chunks = store.getChunks(id);
       expect(chunks.length).toBe(3);
       expect(chunks.map((c) => c.ordinal)).toEqual([0, 1, 2]);
+      // each chunk has a distinct UUIDv7 external id
+      expect(new Set(chunks.map((c) => c.uuid)).size).toBe(3);
+      expect(chunks[0].pageId).toBe(id);
     });
 
     it("supersedes the previous live page on re-put", async () => {
       const id1 = await store.put("doc", { content: "# T\n\nVersion one" });
       const id2 = await store.put("doc", { content: "# T\n\nVersion two" });
-      expect(id2).toBeGreaterThan(id1);
+      expect(id2 > id1).toBe(true);
 
       const live = store.resolveSlug("doc");
       expect(live!.id).toBe(id2);
@@ -140,7 +151,7 @@ describe("MemoryStore", () => {
 
     it("throws on a non-existent page id", () => {
       expect(() =>
-        store.addEvidence(99999, { kind: "url", uri: "https://x.com" })
+        store.addEvidence("no-such-page", { kind: "url", uri: "https://x.com" })
       ).toThrow(/does not exist/);
     });
   });
@@ -162,7 +173,7 @@ describe("MemoryStore", () => {
       const r = results[0];
       expect(r.slug).toBe("ts");
       expect(r.chunkId).toBeGreaterThan(0);
-      expect(r.pageId).toBeGreaterThan(0);
+      expect(typeof r.pageId).toBe("string");
       expect(r.text).toContain("TypeScript");
       expect(r.score).toBeGreaterThan(0);
       expect(r.sourceCount).toBe(1);

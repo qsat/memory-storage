@@ -48,10 +48,18 @@
 - チャンクは検索・embedding の単位。更新時は内容ハッシュで未変更チャンクのベクトルを再利用し、
   旧版のチャンク（＋FTS/vec 行）は削除する（導出物なので破棄してよい）。
 
+## ID 体系
+
+- **`page.id` は UUIDv7**（時系列順 = `ORDER BY id` が作成順）。外部参照・dump ファイル名・
+  ストア間マージに使う安定 ID。
+- **`chunk.id` は整数 rowid のまま**（`fts_chunk` / `vec_chunk` の rowid が整数必須のため）。
+  チャンクの安定外部 ID は **`chunk.uuid`（UUIDv7）**。
+- `page_id` / `superseded_by` / `evidence.page_id` はすべて page の UUIDv7 を参照。
+
 ## スキーマ不変条件
 
 - 「1 slug に live は高々 1 件」を **`page`** で維持する（部分ユニークインデックス）。
-- FTS (`fts_chunk`) / vec (`vec_chunk`) の `rowid` は **`chunk.id`** と同一であることを維持する。
+- FTS (`fts_chunk`) / vec (`vec_chunk`) の `rowid` は **`chunk.id`（整数）** と同一であることを維持する。
 - `page.content` を真実、チャンクを導出索引とする分離を壊さない。
 - スキーマ変更時もこれらの不変条件を壊さない。
 

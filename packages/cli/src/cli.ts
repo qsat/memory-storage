@@ -283,8 +283,8 @@ function main(): Promise<void> | void {
       }
 
       case "evidence": {
-        const id = Number(rest[0]);
-        if (!Number.isInteger(id)) fail("evidence: <knowledgeId> must be an integer");
+        const id = rest[0];
+        if (!id) fail("evidence: missing <pageId>");
         const rows = store.getEvidence(id);
         emit(
           rows
@@ -296,8 +296,8 @@ function main(): Promise<void> | void {
       }
 
       case "add-evidence": {
-        const id = Number(rest[0]);
-        if (!Number.isInteger(id)) fail("add-evidence: <knowledgeId> must be an integer");
+        const id = rest[0];
+        if (!id) fail("add-evidence: missing <pageId>");
         const specs = (values.source as string[]) ?? [];
         if (!specs.length) fail("add-evidence: at least one --source is required");
         for (const spec of specs) store.addEvidence(id, parseSource(spec));

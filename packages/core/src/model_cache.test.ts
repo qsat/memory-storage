@@ -108,7 +108,7 @@ describe("cache directory creation guard", () => {
     const store = new MemoryStore(":memory:");
     // Reaches the (mocked) model load and succeeds — no guard error.
     const id = await store.put("x", { content: "hello" });
-    expect(id).toBeGreaterThan(0);
+    expect(id).toBeTruthy();
     store.close();
   });
 
@@ -119,7 +119,7 @@ describe("cache directory creation guard", () => {
     const { MemoryStore } = await loadWith(dir);
     const store = new MemoryStore(":memory:");
     const id = await store.put("x", { content: "hello" });
-    expect(id).toBeGreaterThan(0);
+    expect(id).toBeTruthy();
     expect(fs.existsSync(dir)).toBe(true);
     store.close();
   });

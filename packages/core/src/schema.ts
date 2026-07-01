@@ -20,14 +20,15 @@ CREATE TABLE IF NOT EXISTS source (
   UNIQUE (kind, uri)
 );
 
+-- page.id is a UUIDv7 (time-ordered): ORDER BY id == chronological (new/old).
 CREATE TABLE IF NOT EXISTS page (
-  id INTEGER PRIMARY KEY,
+  id TEXT PRIMARY KEY,
   slug TEXT NOT NULL,
   content TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'live' CHECK (status IN ('live','stale')),
   epistemic TEXT NOT NULL DEFAULT 'fact'
     CHECK (epistemic IN ('fact','inference','hypothesis')),
-  superseded_by INTEGER REFERENCES page(id),
+  superseded_by TEXT REFERENCES page(id),
   created_at INTEGER NOT NULL,
   last_confirmed_at INTEGER NOT NULL,
   superseded_at INTEGER
@@ -37,9 +38,12 @@ CREATE INDEX IF NOT EXISTS idx_page_slug ON page(slug);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_page_live_slug
   ON page(slug) WHERE status = 'live';
 
+-- chunk.id stays an INTEGER rowid because the fts5 / vec0 indexes require an
+-- integer rowid (= chunk.id). chunk.uuid is the stable external id (UUIDv7).
 CREATE TABLE IF NOT EXISTS chunk (
   id INTEGER PRIMARY KEY,
-  page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+  uuid TEXT NOT NULL UNIQUE,
+  page_id TEXT NOT NULL REFERENCES page(id) ON DELETE CASCADE,
   ordinal INTEGER NOT NULL,
   heading_path TEXT,
   text TEXT NOT NULL,
@@ -49,7 +53,7 @@ CREATE TABLE IF NOT EXISTS chunk (
 CREATE INDEX IF NOT EXISTS idx_chunk_page ON chunk(page_id);
 
 CREATE TABLE IF NOT EXISTS evidence (
-  page_id INTEGER NOT NULL REFERENCES page(id) ON DELETE CASCADE,
+  page_id TEXT NOT NULL REFERENCES page(id) ON DELETE CASCADE,
   source_id INTEGER NOT NULL REFERENCES source(id),
   locator TEXT,
   confirmed_at INTEGER NOT NULL,

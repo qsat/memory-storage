@@ -20,16 +20,15 @@ export function prepareStatements(db: Database.Database): Statements {
   return {
     // ---- page lifecycle ----------------------------------------------------
     insertPage: db.prepare(`
-      INSERT INTO page (slug, content, epistemic, created_at, last_confirmed_at)
-      VALUES (@slug, @content, @epistemic, @created_at, @last_confirmed_at)
-      RETURNING id
+      INSERT INTO page (id, slug, content, epistemic, created_at, last_confirmed_at)
+      VALUES (@id, @slug, @content, @epistemic, @created_at, @last_confirmed_at)
     `),
     /** Mark the current live page for a slug as stale (frees the live slot). */
     staleLive: db.prepare<{ slug: string; now: number }>(
       `UPDATE page SET status = 'stale', superseded_at = @now
        WHERE slug = @slug AND status = 'live'`
     ),
-    linkSupersession: db.prepare<{ old_id: number; new_id: number }>(
+    linkSupersession: db.prepare<{ old_id: string; new_id: string }>(
       `UPDATE page SET superseded_by = @new_id WHERE id = @old_id`
     ),
     resolveLive: db.prepare<{ slug: string }>(
@@ -38,7 +37,7 @@ export function prepareStatements(db: Database.Database): Statements {
     liveIdBySlug: db.prepare<{ slug: string }>(
       `SELECT id FROM page WHERE slug = @slug AND status = 'live'`
     ),
-    pageExists: db.prepare<{ id: number }>(`SELECT 1 FROM page WHERE id = @id`),
+    pageExists: db.prepare<{ id: string }>(`SELECT 1 FROM page WHERE id = @id`),
     getHistory: db.prepare<{ slug: string }>(
       `SELECT id, status, epistemic, superseded_by, created_at, superseded_at
        FROM page WHERE slug = @slug ORDER BY created_at ASC`
@@ -46,18 +45,18 @@ export function prepareStatements(db: Database.Database): Statements {
 
     // ---- chunks ------------------------------------------------------------
     insertChunk: db.prepare(`
-      INSERT INTO chunk (page_id, ordinal, heading_path, text, embed_hash)
-      VALUES (@page_id, @ordinal, @heading_path, @text, @embed_hash)
+      INSERT INTO chunk (uuid, page_id, ordinal, heading_path, text, embed_hash)
+      VALUES (@uuid, @page_id, @ordinal, @heading_path, @text, @embed_hash)
       RETURNING id
     `),
-    chunksByPage: db.prepare<{ page_id: number }>(
+    chunksByPage: db.prepare<{ page_id: string }>(
       `SELECT id, embed_hash FROM chunk WHERE page_id = @page_id`
     ),
-    deleteChunksByPage: db.prepare<{ page_id: number }>(
+    deleteChunksByPage: db.prepare<{ page_id: string }>(
       `DELETE FROM chunk WHERE page_id = @page_id`
     ),
-    getChunks: db.prepare<{ page_id: number }>(
-      `SELECT id, page_id AS pageId, ordinal, heading_path AS headingPath, text
+    getChunks: db.prepare<{ page_id: string }>(
+      `SELECT id, uuid, page_id AS pageId, ordinal, heading_path AS headingPath, text
        FROM chunk WHERE page_id = @page_id ORDER BY ordinal ASC`
     ),
 
@@ -100,7 +99,7 @@ export function prepareStatements(db: Database.Database): Statements {
       RETURNING id
     `),
     insertEvidence: db.prepare<{
-      page_id: number;
+      page_id: string;
       source_id: number;
       locator: string | null;
       confirmed_at: number;
@@ -110,13 +109,13 @@ export function prepareStatements(db: Database.Database): Statements {
           SET confirmed_at = excluded.confirmed_at,
               locator = COALESCE(excluded.locator, locator)`),
     /** Recompute a page's freshness cache from its evidence (or created_at). */
-    refreshConfirmedAt: db.prepare<{ id: number }>(
+    refreshConfirmedAt: db.prepare<{ id: string }>(
       `UPDATE page SET last_confirmed_at = COALESCE(
          (SELECT MAX(confirmed_at) FROM evidence WHERE page_id = @id),
          created_at
        ) WHERE id = @id`
     ),
-    getEvidence: db.prepare<{ id: number }>(
+    getEvidence: db.prepare<{ id: string }>(
       `SELECT s.id AS sourceId, s.kind, s.uri, s.title,
               e.locator, e.confirmed_at AS confirmedAt
        FROM evidence e JOIN source s ON e.source_id = s.id
