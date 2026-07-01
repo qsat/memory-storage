@@ -188,7 +188,7 @@ npm run cli -- history typescript
 | コマンド | 説明 |
 |---|---|
 | `put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]` | ページ新規 or 置換 |
-| `search <query> [-k <topK>]` | チャンク粒度のハイブリッド検索 |
+| `search <query> [-k <topK>] [--group-by-page]` | チャンク粒度のハイブリッド検索。`--group-by-page` でページ単位・読み順に整列 |
 | `get <slug>` | ページの全文 Markdown を出力（復元） |
 | `resolve <slug>` | ページの id / メタ情報 |
 | `history <slug>` | 版履歴 |
@@ -222,6 +222,16 @@ npm run cli -- history typescript
 | `hybridSearch(query, topK?)` | live のみ。**チャンク粒度**で `slug`/`ordinal`/`headingPath`/`text`/`sourceCount`/`lastConfirmedAt` 付き |
 | `getEvidence(pageId)` | 出典一覧 |
 | `getHistory(slug)` | 版履歴（古い順、live が現行） |
+| `groupSearchResultsByPage(results)` | `hybridSearch` の結果をページ単位でまとめ、各ページ内は `ordinal` 昇順（読み順）に整列する純粋関数 |
+
+### 並び順（ordinal）について
+
+- **正準順序は `(page, ordinal)` 昇順**。`getChunks(pageId)` は常にこの順で返します。これが
+  ページの読み順であり、`page.content` から `chunkMarkdown` で再生成しても同じ順序になります。
+- **`hybridSearch` はスコア順**（読み順ではありません）。同一ページの複数チャンクが当たった場合に
+  読み順へ戻すには `groupSearchResultsByPage(results)` を使います（CLI では `search --group-by-page`）。
+- **`ordinal` は版をまたいで比較できません**。ページを `put` で更新すると章構成に応じて
+  ordinal は 0 から振り直されます。異なる `pageId`（＝異なる版）の ordinal を比べても意味を持ちません。
 
 ## CI
 
