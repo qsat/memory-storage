@@ -11,6 +11,7 @@
  *   memory-storage get <slug>
  *   memory-storage resolve <slug>
  *   memory-storage history <slug>
+ *   memory-storage chunk <chunkId> [--context N]
  *   memory-storage evidence <pageId>
  *   memory-storage add-evidence <pageId> -s kind:uri [-s ...]
  *
@@ -72,6 +73,12 @@ COMMANDS
   get <slug>            Print the live page's full Markdown (for reading/editing).
   resolve <slug>        Print the live page's id + metadata (no body).
   history <slug>        List every version of the slug (oldest first).
+  chunk <chunkId>        Print one chunk (by the integer id from a search hit),
+                          with its parent page's metadata.
+      --context <n>                       also include ±n neighboring chunks
+                                           from the same page (default: 0)
+      → only resolves chunks of the CURRENT LIVE page version; a superseded
+        page's chunks are gone, so old chunkIds stop resolving.
   evidence <pageId>     List a page's sources.
   add-evidence <pageId> -s <kind:uri> [-s ...]   Attach/refresh sources.
 
@@ -83,6 +90,7 @@ OPTIONS
                            kind ∈ file | url | conversation | tool | other
   -k, --top-k <n>          number of search results (default: 10)
       --group-by-page      search: group hits by page in reading order
+      --context <n>        chunk: include ±n neighboring chunks (default: 0)
       --db <path>          SQLite file; default env MEMORY_DB or "memory.db".
                            Relative paths resolve from your current directory.
       --json               machine-readable JSON on stdout
@@ -187,6 +195,7 @@ function main(): Promise<void> | void {
         source: { type: "string", short: "s", multiple: true },
         "top-k": { type: "string", short: "k" },
         "group-by-page": { type: "boolean" },
+        context: { type: "string" },
         db: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -312,6 +321,39 @@ function main(): Promise<void> | void {
             )
             .join("\n") || "(no history)",
           rows
+        );
+        break;
+      }
+
+      case "chunk": {
+        const chunkIdRaw = rest[0];
+        const chunkId = Number(chunkIdRaw);
+        if (!chunkIdRaw || !Number.isInteger(chunkId)) {
+          fail("chunk: <chunkId> must be an integer");
+        }
+        const context = values.context ? Number(values.context) : 0;
+        if (!Number.isInteger(context) || context < 0) {
+          fail("chunk: --context must be a non-negative integer");
+        }
+        const chunks =
+          context > 0
+            ? store.getChunkNeighbors(chunkId, context)
+            : (() => {
+                const detail = store.getChunkById(chunkId);
+                return detail ? [detail] : [];
+              })();
+        emit(
+          chunks.length
+            ? chunks
+                .map(
+                  (c) =>
+                    `${c.chunkId === chunkId ? "→ " : "  "}#${c.ordinal}` +
+                    `${c.headingPath ? ` (${c.headingPath})` : ""}` +
+                    ` [${c.slug}, ${c.epistemic}]\n    ${c.text}`
+                )
+                .join("\n\n")
+            : "(not found — chunk id must belong to the current live page version)",
+          chunks
         );
         break;
       }

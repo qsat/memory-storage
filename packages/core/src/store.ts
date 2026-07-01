@@ -10,6 +10,7 @@ import { prepareStatements, type Statements } from "./statements.js";
 import { embed, DOC_PREFIX, QUERY_PREFIX } from "./model.js";
 import { chunkMarkdown, embedInputFor, hashOf } from "./chunk.js";
 import type {
+  ChunkDetail,
   ChunkRow,
   EvidenceRow,
   HistoryRow,
@@ -194,6 +195,36 @@ export class MemoryStore {
   /** The chunks of a page, in order (for inspection / reconstruction). */
   getChunks(pageId: string): ChunkRow[] {
     return this.stmts.getChunks.all({ page_id: pageId }) as ChunkRow[];
+  }
+
+  /**
+   * Look up a single chunk by id, with its parent page's metadata attached.
+   * Only resolves chunks belonging to the current live page version — a
+   * superseded page's chunks are deleted, so their ids stop resolving.
+   */
+  getChunkById(chunkId: number): ChunkDetail | undefined {
+    return this.stmts.chunkDetail.get({ id: chunkId }) as
+      | ChunkDetail
+      | undefined;
+  }
+
+  /**
+   * A chunk and its neighbors within the same (live) page, for context around
+   * a single hit. Returns chunks with `ordinal` in
+   * `[target.ordinal - radius, target.ordinal + radius]`, ordinal ascending,
+   * including the target itself. Returns `[]` if the chunk doesn't resolve
+   * (see {@link getChunkById}).
+   *
+   * @param radius how many chunks before/after to include (default 1)
+   */
+  getChunkNeighbors(chunkId: number, radius: number = 1): ChunkDetail[] {
+    const target = this.getChunkById(chunkId);
+    if (!target) return [];
+    return this.stmts.chunksInOrdinalRange.all({
+      page_id: target.pageId,
+      min_ordinal: Math.max(0, target.ordinal - radius),
+      max_ordinal: target.ordinal + radius,
+    }) as ChunkDetail[];
   }
 
   /**

@@ -61,6 +61,9 @@
 - **`chunk.id` は整数 rowid のまま**（`fts_chunk` / `vec_chunk` の rowid が整数必須のため）。
   チャンクの安定外部 ID は **`chunk.uuid`（UUIDv7）**。
 - `page_id` / `superseded_by` / `evidence.page_id` はすべて page の UUIDv7 を参照。
+- **`chunk.id` は `AUTOINCREMENT` を外さない**。無いと chunk テーブルが空になった直後に SQLite が
+  rowid を再利用し、古い（stale な）chunk id が別の新規チャンクへ静かに化ける事故になる
+  （`getChunkById` 等が誤ったデータを返す）。
 
 ## スキーマ不変条件
 

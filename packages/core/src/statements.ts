@@ -90,6 +90,32 @@ export function prepareStatements(db: Database.Database): Statements {
        FROM chunk c JOIN page p ON c.page_id = p.id
        WHERE c.id = @id AND p.status = 'live'`
     ),
+    /** A single chunk with full metadata, joined with its live page (no score). */
+    chunkDetail: db.prepare<{ id: number }>(
+      `SELECT c.id AS chunkId, c.uuid AS chunkUuid, c.page_id AS pageId, p.slug,
+              c.ordinal, c.heading_path AS headingPath, c.text,
+              c.embed_hash AS embedHash, p.epistemic,
+              p.last_confirmed_at AS lastConfirmedAt,
+              (SELECT COUNT(*) FROM evidence WHERE page_id = p.id) AS sourceCount
+       FROM chunk c JOIN page p ON c.page_id = p.id
+       WHERE c.id = @id AND p.status = 'live'`
+    ),
+    /** Chunks of a (live) page within an ordinal range, for neighbor lookup. */
+    chunksInOrdinalRange: db.prepare<{
+      page_id: string;
+      min_ordinal: number;
+      max_ordinal: number;
+    }>(
+      `SELECT c.id AS chunkId, c.uuid AS chunkUuid, c.page_id AS pageId, p.slug,
+              c.ordinal, c.heading_path AS headingPath, c.text,
+              c.embed_hash AS embedHash, p.epistemic,
+              p.last_confirmed_at AS lastConfirmedAt,
+              (SELECT COUNT(*) FROM evidence WHERE page_id = p.id) AS sourceCount
+       FROM chunk c JOIN page p ON c.page_id = p.id
+       WHERE c.page_id = @page_id AND p.status = 'live'
+         AND c.ordinal BETWEEN @min_ordinal AND @max_ordinal
+       ORDER BY c.ordinal ASC`
+    ),
 
     // ---- provenance --------------------------------------------------------
     upsertSource: db.prepare(`

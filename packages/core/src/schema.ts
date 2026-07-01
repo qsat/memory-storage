@@ -40,8 +40,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_page_live_slug
 
 -- chunk.id stays an INTEGER rowid because the fts5 / vec0 indexes require an
 -- integer rowid (= chunk.id). chunk.uuid is the stable external id (UUIDv7).
+-- AUTOINCREMENT is required here: without it, SQLite reuses the lowest free
+-- rowid once the table is emptied (e.g. a page's only chunks get deleted on
+-- supersession), so a stale/cached chunk id could silently resolve to an
+-- unrelated new chunk instead of correctly failing to resolve.
 CREATE TABLE IF NOT EXISTS chunk (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   uuid TEXT NOT NULL UNIQUE,
   page_id TEXT NOT NULL REFERENCES page(id) ON DELETE CASCADE,
   ordinal INTEGER NOT NULL,

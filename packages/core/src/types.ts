@@ -65,6 +65,27 @@ export interface ChunkRow {
   text: string;
 }
 
+/**
+ * A single chunk with its parent page's metadata — for direct lookup
+ * ({@link MemoryStore.getChunkById} / {@link MemoryStore.getChunkNeighbors}),
+ * as opposed to a search hit (no relevance score). Only resolvable for chunks
+ * belonging to the current **live** page version; a superseded page's chunks
+ * are deleted, so their ids no longer resolve.
+ */
+export interface ChunkDetail {
+  chunkId: number;
+  chunkUuid: string;
+  pageId: string;
+  slug: string;
+  ordinal: number;
+  headingPath: string | null;
+  text: string;
+  embedHash: string;
+  epistemic: "fact" | "inference" | "hypothesis";
+  sourceCount: number;
+  lastConfirmedAt: number;
+}
+
 /** A chunk-level search hit, carrying its parent page's metadata. */
 export interface SearchResult {
   chunkId: number;
