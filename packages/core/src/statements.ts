@@ -34,6 +34,8 @@ export function prepareStatements(db: Database.Database): Statements {
     resolveLive: db.prepare<{ slug: string }>(
       `SELECT * FROM page WHERE slug = @slug AND status = 'live'`
     ),
+    /** Any version by id (live or stale) — the page row itself is never deleted. */
+    pageById: db.prepare<{ id: string }>(`SELECT * FROM page WHERE id = @id`),
     liveIdBySlug: db.prepare<{ slug: string }>(
       `SELECT id FROM page WHERE slug = @slug AND status = 'live'`
     ),

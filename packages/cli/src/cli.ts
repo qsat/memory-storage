@@ -8,8 +8,8 @@
  *
  *   memory-storage put <slug> -c "<content>" [-e fact|inference|hypothesis] [-s kind:uri ...]
  *   memory-storage search "<query>" [-k 10]
- *   memory-storage get <slug>
- *   memory-storage resolve <slug>
+ *   memory-storage get <slug> | get --id <pageId>
+ *   memory-storage resolve <slug> | resolve --id <pageId>
  *   memory-storage history <slug>
  *   memory-storage chunk <chunkId> [--context N]
  *   memory-storage evidence <pageId>
@@ -26,6 +26,7 @@ import {
   MODEL_CACHE_DIR,
   type SourceInput,
   type ModelProgress,
+  type PageRow,
 } from "memory-storage";
 
 const HELP = `memory-storage — local hybrid-search / RAG memory for an LLM wiki
@@ -70,8 +71,16 @@ COMMANDS
         reading order. NOTE: ordinal is only comparable within one page
         version — never compare it across pages or across versions of a slug.
 
-  get <slug>            Print the live page's full Markdown (for reading/editing).
-  resolve <slug>        Print the live page's id + metadata (no body).
+  get <slug> | get --id <pageId>
+                        Print a page's full Markdown (for reading/editing).
+                        <slug>  → the current LIVE page.
+                        --id    → that exact version, live OR stale (e.g. an
+                                  id from getHistory, a search hit's pageId,
+                                  or a dump file name). Mutually exclusive
+                                  with <slug>.
+  resolve <slug> | resolve --id <pageId>
+                        Same targeting as 'get', but prints id/slug/epistemic/
+                        status metadata only (no body).
   history <slug>        List every version of the slug (oldest first).
   chunk <chunkId>        Print one chunk (by the integer id from a search hit),
                           with its parent page's metadata.
@@ -91,6 +100,8 @@ OPTIONS
   -k, --top-k <n>          number of search results (default: 10)
       --group-by-page      search: group hits by page in reading order
       --context <n>        chunk: include ±n neighboring chunks (default: 0)
+      --id <pageId>        get/resolve: target a specific version (live or
+                           stale) instead of <slug>'s current live page
       --db <path>          SQLite file; default env MEMORY_DB or "memory.db".
                            Relative paths resolve from your current directory.
       --json               machine-readable JSON on stdout
@@ -158,6 +169,28 @@ function parseSource(spec: string): SourceInput {
 }
 
 /**
+ * Resolve a `get`/`resolve` target: either a `<slug>` positional (always the
+ * current live page) or `--id <pageId>` (that exact version, live or stale).
+ * The two are mutually exclusive so lookups are never ambiguous.
+ */
+function resolvePageArg(
+  command: string,
+  rest: string[],
+  values: Record<string, unknown>,
+  store: MemoryStore
+): PageRow | undefined {
+  const idFlag = values.id as string | undefined;
+  const slug = rest[0];
+  if (idFlag && slug) {
+    fail(`${command}: specify either <slug> or --id, not both`);
+  }
+  if (!idFlag && !slug) {
+    fail(`${command}: missing <slug> (or use --id <pageId>)`);
+  }
+  return idFlag ? store.getPageById(idFlag) : store.resolveSlug(slug!);
+}
+
+/**
  * Print model download progress to stderr (keeps stdout clean for --json).
  * Files download concurrently, so we emit one line per file at 25% milestones
  * instead of overwriting a single line (which garbles with parallel downloads).
@@ -196,6 +229,7 @@ function main(): Promise<void> | void {
         "top-k": { type: "string", short: "k" },
         "group-by-page": { type: "boolean" },
         context: { type: "string" },
+        id: { type: "string" },
         db: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -289,17 +323,13 @@ function main(): Promise<void> | void {
       }
 
       case "get": {
-        const slug = rest[0];
-        if (!slug) fail("get: missing <slug>");
-        const row = store.resolveSlug(slug);
+        const row = resolvePageArg("get", rest, values, store);
         emit(row ? row.content : "(not found)", row ?? null);
         break;
       }
 
       case "resolve": {
-        const slug = rest[0];
-        if (!slug) fail("resolve: missing <slug>");
-        const row = store.resolveSlug(slug);
+        const row = resolvePageArg("resolve", rest, values, store);
         emit(
           row
             ? `id=${row.id} slug=${row.slug} epistemic=${row.epistemic} status=${row.status}`
