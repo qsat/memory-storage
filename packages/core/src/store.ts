@@ -15,6 +15,7 @@ import type {
   EvidenceRow,
   HistoryRow,
   PageRow,
+  PageSummary,
   PutOptions,
   PutResult,
   SearchResult,
@@ -304,6 +305,14 @@ export class MemoryStore {
   /** Version history for a slug, oldest first (the live version is current). */
   getHistory(slug: string): HistoryRow[] {
     return this.stmts.getHistory.all({ slug }) as HistoryRow[];
+  }
+
+  /**
+   * Every page version's identity (id, slug, status) with no content —
+   * for enumerating all pages (e.g. a bulk dump), sorted by slug then age.
+   */
+  listPages(): PageSummary[] {
+    return this.stmts.listPages.all() as PageSummary[];
   }
 
   /** Close the underlying database connection. */

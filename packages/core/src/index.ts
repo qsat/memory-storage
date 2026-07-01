@@ -8,6 +8,7 @@
  * - {@link ./statements} `prepareStatements(db)` — compiled queries
  * - {@link ./store}      `MemoryStore` orchestration
  * - {@link ./ordering}   canonical (page, ordinal) reading order helpers
+ * - {@link ./dump}       dump file formatting (YAML front matter + content)
  */
 export { MemoryStore } from "./store.js";
 
@@ -23,11 +24,18 @@ export { chunkMarkdown, CHUNK_MAX_CHARS } from "./chunk.js";
 
 export { groupSearchResultsByPage } from "./ordering.js";
 
+export {
+  sanitizeSlugForFilename,
+  dumpFileName,
+  formatDumpFile,
+} from "./dump.js";
+
 export type {
   SourceInput,
   PutOptions,
   PutResult,
   PageRow,
+  PageSummary,
   ChunkRow,
   ChunkDetail,
   SearchResult,

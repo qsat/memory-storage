@@ -51,6 +51,13 @@ export interface PageRow {
   superseded_at: number | null;
 }
 
+/** Lightweight page identity, without content — for enumerating every page. */
+export interface PageSummary {
+  id: string;
+  slug: string;
+  status: "live" | "stale";
+}
+
 /**
  * A derived chunk of a page (the unit of embedding / retrieval).
  * `id` is the integer rowid shared with the fts5 / vec0 indexes; `uuid` is the
