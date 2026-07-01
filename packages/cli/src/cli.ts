@@ -21,6 +21,7 @@ import {
   MemoryStore,
   onModelProgress,
   resolveUserPath,
+  groupSearchResultsByPage,
   MODEL_CACHE_DIR,
   type SourceInput,
   type ModelProgress,
@@ -58,8 +59,15 @@ COMMANDS
 
   search <query>        Hybrid search over live chunks.
       -k, --top-k <n>                     default: 10
-      → ranked chunks (JSON array): slug, ordinal, headingPath, text,
-        epistemic, score, sourceCount, lastConfirmedAt
+      --group-by-page                     group hits by page, sorted into
+                                           reading order (ordinal ascending)
+                                           within each page, instead of one
+                                           flat relevance-ranked list
+      → default: ranked chunks (JSON array): slug, ordinal, headingPath,
+        text, epistemic, score, sourceCount, lastConfirmedAt
+      → --group-by-page: JSON array of {pageId, slug, chunks}, chunks in
+        reading order. NOTE: ordinal is only comparable within one page
+        version — never compare it across pages or across versions of a slug.
 
   get <slug>            Print the live page's full Markdown (for reading/editing).
   resolve <slug>        Print the live page's id + metadata (no body).
@@ -74,6 +82,7 @@ OPTIONS
                            '{"kind":"url","uri":"…","title":"…","locator":"…"}'
                            kind ∈ file | url | conversation | tool | other
   -k, --top-k <n>          number of search results (default: 10)
+      --group-by-page      search: group hits by page in reading order
       --db <path>          SQLite file; default env MEMORY_DB or "memory.db".
                            Relative paths resolve from your current directory.
       --json               machine-readable JSON on stdout
@@ -177,6 +186,7 @@ function main(): Promise<void> | void {
         epistemic: { type: "string", short: "e" },
         source: { type: "string", short: "s", multiple: true },
         "top-k": { type: "string", short: "k" },
+        "group-by-page": { type: "boolean" },
         db: { type: "string" },
         json: { type: "boolean" },
         help: { type: "boolean", short: "h" },
@@ -231,6 +241,30 @@ function main(): Promise<void> | void {
         if (!query) fail("search: missing <query>");
         const topK = values["top-k"] ? Number(values["top-k"]) : 10;
         const results = await store.hybridSearch(query, topK);
+
+        if (values["group-by-page"]) {
+          // Reading order within each page, not relevance order. ordinal is
+          // only meaningful within one page version — never compare it
+          // across pages or across versions of the same slug.
+          const groups = groupSearchResultsByPage(results);
+          emit(
+            groups
+              .map(
+                (g) =>
+                  `## ${g.slug}\n` +
+                  g.chunks
+                    .map(
+                      (c) =>
+                        `  #${c.ordinal}${c.headingPath ? ` (${c.headingPath})` : ""} [${c.score.toFixed(4)}]\n    ${c.text}`
+                    )
+                    .join("\n")
+              )
+              .join("\n\n") || "(no results)",
+            groups
+          );
+          break;
+        }
+
         emit(
           results
             .map(

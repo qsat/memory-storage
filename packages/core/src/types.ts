@@ -79,6 +79,19 @@ export interface SearchResult {
   lastConfirmedAt: number;
 }
 
+/**
+ * Search results for one page, ordered for reading rather than relevance.
+ * Produced by {@link groupSearchResultsByPage} — see that function for the
+ * canonical-order rationale (ordinal is only comparable within one page
+ * version; it is reassigned whenever a page is superseded).
+ */
+export interface PageSearchGroup {
+  pageId: string;
+  slug: string;
+  /** This page's chunks, sorted by ordinal (i.e. reading order). */
+  chunks: SearchResult[];
+}
+
 /** A resolved evidence row joining a page to one of its sources. */
 export interface EvidenceRow {
   sourceId: number;

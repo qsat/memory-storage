@@ -7,6 +7,7 @@
  * - {@link ./schema}     table DDL and `applySchema`
  * - {@link ./statements} `prepareStatements(db)` — compiled queries
  * - {@link ./store}      `MemoryStore` orchestration
+ * - {@link ./ordering}   canonical (page, ordinal) reading order helpers
  */
 export { MemoryStore } from "./store.js";
 
@@ -20,6 +21,8 @@ export {
 
 export { chunkMarkdown, CHUNK_MAX_CHARS } from "./chunk.js";
 
+export { groupSearchResultsByPage } from "./ordering.js";
+
 export type {
   SourceInput,
   PutOptions,
@@ -27,6 +30,7 @@ export type {
   PageRow,
   ChunkRow,
   SearchResult,
+  PageSearchGroup,
   EvidenceRow,
   HistoryRow,
   ModelProgress,
