@@ -192,6 +192,17 @@ export class MemoryStore {
     return this.stmts.resolveLive.get({ slug }) as PageRow | undefined;
   }
 
+  /**
+   * Look up a specific page version by id — live or stale. Unlike
+   * {@link resolveSlug}, this can return a superseded version (the page row
+   * itself is kept forever; only its chunks are deleted on supersession), so
+   * it's the right lookup for ids captured from `put()`, `getHistory()`, or a
+   * dump file name.
+   */
+  getPageById(pageId: string): PageRow | undefined {
+    return this.stmts.pageById.get({ id: pageId }) as PageRow | undefined;
+  }
+
   /** The chunks of a page, in order (for inspection / reconstruction). */
   getChunks(pageId: string): ChunkRow[] {
     return this.stmts.getChunks.all({ page_id: pageId }) as ChunkRow[];

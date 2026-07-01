@@ -33,6 +33,9 @@
 - `slug` は概念の不変ハンドル。
   表示名・content は `put()` で更新できるが、slug 自体のリネームは行わない。
 - Wiki リンクは slug を指す。slug を変えるとリンクが壊れる。
+- **slug と id の意味は違う**: `slug` → 常に現行 **live**（`resolveSlug`）。
+  `id` → その**特定版**（live/stale どちらも、`getPageById`。ページ行は削除されないため
+  常に解決できる）。Wiki リンクは slug で、版参照（履歴・dump・検索結果の pageId）は id で。
 
 ## 埋め込みモデル
 

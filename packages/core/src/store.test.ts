@@ -163,6 +163,33 @@ describe("MemoryStore", () => {
     });
   });
 
+  describe("getPageById", () => {
+    it("resolves the live version by id", async () => {
+      const { id } = await store.put("doc", { content: "# Doc\n\nlive body" });
+      const page = store.getPageById(id);
+      expect(page).toBeDefined();
+      expect(page!.status).toBe("live");
+      expect(page!.content).toContain("live body");
+    });
+
+    it("resolves a stale (superseded) version by id — unlike resolveSlug", async () => {
+      const v1 = await store.put("doc", { content: "# Doc\n\nold body" });
+      await store.put("doc", { content: "# Doc\n\nnew body" });
+
+      const stalePage = store.getPageById(v1.id);
+      expect(stalePage).toBeDefined();
+      expect(stalePage!.status).toBe("stale");
+      expect(stalePage!.content).toContain("old body");
+
+      // resolveSlug only ever returns the current live version.
+      expect(store.resolveSlug("doc")!.content).toContain("new body");
+    });
+
+    it("returns undefined for an unknown id", () => {
+      expect(store.getPageById("no-such-page")).toBeUndefined();
+    });
+  });
+
   describe("getChunkById", () => {
     it("returns the chunk with its parent page's metadata", async () => {
       const { id } = await store.put("ts", {

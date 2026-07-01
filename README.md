@@ -189,8 +189,8 @@ npm run cli -- history typescript
 |---|---|
 | `put <slug> -c <content> [-e <epistemic>] [-s <kind:uri> ...]` | ページ新規 or 置換 |
 | `search <query> [-k <topK>] [--group-by-page]` | チャンク粒度のハイブリッド検索。`--group-by-page` でページ単位・読み順に整列 |
-| `get <slug>` | ページの全文 Markdown を出力（復元） |
-| `resolve <slug>` | ページの id / メタ情報 |
+| `get <slug>` \| `get --id <pageId>` | ページの全文 Markdown を出力。`<slug>` は**現行 live**、`--id` は**特定版**（stale も可）。併用不可 |
+| `resolve <slug>` \| `resolve --id <pageId>` | ページの id / メタ情報のみ（本文無し）。対象指定は `get` と同じ |
 | `history <slug>` | 版履歴 |
 | `chunk <chunkId> [--context <n>]` | チャンク単体表示（`--context` で前後 n 件を含める）。**live のみ**解決可能 |
 | `evidence <pageId>` | 出典一覧 |
@@ -220,6 +220,7 @@ npm run cli -- history typescript
 | `put(slug, { content, sources?, epistemic? })` | ページ新規 or 置換（Wiki 編集相当）。**`{ id, slug }` を返す**（`id` は UUIDv7）。将来の insert 系書き込みも同じ形を返す規約 |
 | `addEvidence(pageId, source)` | 出典追加 / 再裏付け（強化）。鮮度も更新 |
 | `resolveSlug(slug)` | 最新 live ページ（全文 content）を返す |
+| `getPageById(pageId)` | 特定版（**live/stale どちらも**）を id で取得。ページ行自体は削除されないため常に解決できる |
 | `getChunks(pageId)` | ページのチャンク一覧（ordinal 順） |
 | `getChunkById(chunkId)` | チャンク単体＋親ページのメタ情報。**live のみ**解決可能（stale 版のチャンクは削除済みで解決しない） |
 | `getChunkNeighbors(chunkId, radius?)` | 対象チャンク＋前後 `radius` 件（既定 1）を ordinal 昇順で返す。ページ境界でクランプ |
