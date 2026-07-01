@@ -15,6 +15,7 @@ import type {
   HistoryRow,
   PageRow,
   PutOptions,
+  PutResult,
   SearchResult,
   SourceInput,
 } from "./types.js";
@@ -44,9 +45,9 @@ export class MemoryStore {
    * it is chunked for indexing, and embeddings of unchanged chunks are reused
    * from the previous version (only changed/new chunks are re-embedded).
    *
-   * @returns the new page version's id (UUIDv7)
+   * @returns the new page version's id and slug
    */
-  async put(slug: string, opts: PutOptions): Promise<string> {
+  async put(slug: string, opts: PutOptions): Promise<PutResult> {
     const { content, sources, epistemic = "fact" } = opts;
     if (!content.trim()) throw new Error("put: content must not be empty");
 
@@ -152,7 +153,8 @@ export class MemoryStore {
       return newPageId;
     });
 
-    return txn();
+    const id = txn();
+    return { id, slug };
   }
 
   /**

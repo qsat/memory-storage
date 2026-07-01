@@ -37,9 +37,10 @@ describe("MemoryStore", () => {
   afterEach(() => store.close());
 
   describe("put", () => {
-    it("creates a page and returns its UUIDv7 id", async () => {
-      const id = await store.put("ts", { content: "# TS\n\ncontent" });
-      expect(id).toMatch(
+    it("creates a page and returns its UUIDv7 id and slug", async () => {
+      const result = await store.put("ts", { content: "# TS\n\ncontent" });
+      expect(result.slug).toBe("ts");
+      expect(result.id).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
       );
     });
@@ -47,7 +48,7 @@ describe("MemoryStore", () => {
     it("returns time-ordered ids (newer sorts greater)", async () => {
       const a = await store.put("p1", { content: "# A\n\nx" });
       const b = await store.put("p2", { content: "# B\n\ny" });
-      expect(b > a).toBe(true); // UUIDv7 is monotonic / time-ordered
+      expect(b.id > a.id).toBe(true); // UUIDv7 is monotonic / time-ordered
     });
 
     it("rejects empty content", async () => {
@@ -67,7 +68,7 @@ describe("MemoryStore", () => {
     });
 
     it("stores multiple chunks for a multi-section page", async () => {
-      const id = await store.put("multi", {
+      const { id } = await store.put("multi", {
         content: "# A\n\naaa\n\n# B\n\nbbb\n\n# C\n\nccc",
       });
       const chunks = store.getChunks(id);
@@ -79,25 +80,25 @@ describe("MemoryStore", () => {
     });
 
     it("supersedes the previous live page on re-put", async () => {
-      const id1 = await store.put("doc", { content: "# T\n\nVersion one" });
-      const id2 = await store.put("doc", { content: "# T\n\nVersion two" });
-      expect(id2 > id1).toBe(true);
+      const v1 = await store.put("doc", { content: "# T\n\nVersion one" });
+      const v2 = await store.put("doc", { content: "# T\n\nVersion two" });
+      expect(v2.id > v1.id).toBe(true);
 
       const live = store.resolveSlug("doc");
-      expect(live!.id).toBe(id2);
+      expect(live!.id).toBe(v2.id);
       expect(live!.content).toContain("Version two");
 
       const history = store.getHistory("doc");
       expect(history).toHaveLength(2);
       expect(history[0].status).toBe("stale");
-      expect(history[0].superseded_by).toBe(id2);
+      expect(history[0].superseded_by).toBe(v2.id);
       expect(history[1].status).toBe("live");
     });
 
     it("deletes the superseded version's chunks", async () => {
-      const id1 = await store.put("doc", { content: "# A\n\nold" });
+      const v1 = await store.put("doc", { content: "# A\n\nold" });
       await store.put("doc", { content: "# A\n\nnew" });
-      expect(store.getChunks(id1)).toHaveLength(0); // old chunks removed
+      expect(store.getChunks(v1.id)).toHaveLength(0); // old chunks removed
     });
 
     it("reuses embeddings for unchanged chunks on re-put", async () => {
@@ -114,7 +115,7 @@ describe("MemoryStore", () => {
 
     it("handles content that is only a code/mermaid block", async () => {
       // embedInputFor strips fences → empty → falls back to the raw text.
-      const id = await store.put("diagram", {
+      const { id } = await store.put("diagram", {
         content: "```mermaid\ngraph TD; A-->B\n```",
       });
       expect(store.getChunks(id)).toHaveLength(1);
@@ -122,7 +123,7 @@ describe("MemoryStore", () => {
     });
 
     it("attaches sources as evidence at the page level", async () => {
-      const id = await store.put("n", {
+      const { id } = await store.put("n", {
         content: "# N\n\nNode uses V8",
         sources: [
           { kind: "url", uri: "https://nodejs.org" },
@@ -137,7 +138,7 @@ describe("MemoryStore", () => {
 
   describe("addEvidence", () => {
     it("adds a source to an existing page", async () => {
-      const id = await store.put("p", { content: "# P\n\nclaim" });
+      const { id } = await store.put("p", { content: "# P\n\nclaim" });
       expect(store.getEvidence(id)).toHaveLength(0);
       store.addEvidence(id, {
         kind: "url",

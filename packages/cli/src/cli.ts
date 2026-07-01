@@ -217,12 +217,12 @@ function main(): Promise<void> | void {
         const epistemic = (values.epistemic as string | undefined) ?? "fact";
         if (!EPISTEMIC.has(epistemic)) fail(`put: invalid --epistemic "${epistemic}"`);
         const sources = ((values.source as string[]) ?? []).map(parseSource);
-        const id = await store.put(slug, {
+        const result = await store.put(slug, {
           content,
           epistemic: epistemic as "fact" | "inference" | "hypothesis",
           sources: sources.length ? sources : undefined,
         });
-        emit(`put ok: id=${id} slug=${slug}`, { id, slug });
+        emit(`put ok: id=${result.id} slug=${result.slug}`, result);
         break;
       }
 

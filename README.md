@@ -121,7 +121,8 @@ const store = new MemoryStore("./memory.db"); // 省略時は ":memory:"
 
 // Markdown ページを登録（同じ slug への再登録は旧版を stale にして置き換え。
 // 見出し＋文字数でチャンク分割し、未変更チャンクの embedding は再利用）
-const id = await store.put("typescript", {
+// put は { id, slug } を返す（id は UUIDv7）。後続呼び出しをそのまま連鎖できる。
+const { id, slug } = await store.put("typescript", {
   content: "# TypeScript\n\nJS に静的型付けを加えた言語。\n\n## 型システム\n\n型推論が強力。",
   epistemic: "fact",
   sources: [{ kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" }],
@@ -131,7 +132,7 @@ const id = await store.put("typescript", {
 const results = await store.hybridSearch("型推論", 5);
 
 // slug を最新 live ページに解決（全文 = content。Wiki リンク解決・元ページ復元）
-const page = store.resolveSlug("typescript");
+const page = store.resolveSlug(slug);
 
 // ページのチャンク一覧（分割の確認・再構成）
 const chunks = store.getChunks(id);
@@ -141,7 +142,7 @@ store.addEvidence(id, { kind: "url", uri: "https://example.com/proof" });
 
 // 出典一覧・版履歴
 const evidence = store.getEvidence(id);
-const history = store.getHistory("typescript");
+const history = store.getHistory(slug);
 
 store.close();
 ```
@@ -214,7 +215,7 @@ npm run cli -- history typescript
 
 | 関数 | 役割 |
 |---|---|
-| `put(slug, { content, sources?, epistemic? })` | ページ新規 or 置換（Wiki 編集相当）。ページ id（UUIDv7）を返す |
+| `put(slug, { content, sources?, epistemic? })` | ページ新規 or 置換（Wiki 編集相当）。**`{ id, slug }` を返す**（`id` は UUIDv7）。将来の insert 系書き込みも同じ形を返す規約 |
 | `addEvidence(pageId, source)` | 出典追加 / 再裏付け（強化）。鮮度も更新 |
 | `resolveSlug(slug)` | 最新 live ページ（全文 content）を返す |
 | `getChunks(pageId)` | ページのチャンク一覧（ordinal 順） |

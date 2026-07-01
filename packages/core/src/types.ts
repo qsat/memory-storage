@@ -24,6 +24,18 @@ export interface PutOptions {
 }
 
 /**
+ * Result of a write that creates/replaces a page ({@link MemoryStore.put}).
+ * Any future insert-style write should return this same shape for its parent
+ * page, so callers always have the id and slug to chain further calls with.
+ */
+export interface PutResult {
+  /** The new page version's id (UUIDv7). */
+  id: string;
+  /** The slug the page was written under. */
+  slug: string;
+}
+
+/**
  * A wiki page: the canonical full-markdown record, addressed by slug.
  * `id` is a UUIDv7 — time-ordered, so sorting by id gives chronological order.
  */

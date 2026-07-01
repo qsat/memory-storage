@@ -80,13 +80,14 @@ npm と相互運用でき、型定義 (.d.ts) で既存 JS を活用できる。
 
   hr("put — Markdown ページを登録（複数セクション）");
   call('store.put("typescript", { content: <markdown>, sources:[url] })');
-  const tsId = await store.put("typescript", {
+  const ts = await store.put("typescript", {
     content: tsPage,
     epistemic: "fact",
     sources: [
       { kind: "url", uri: "https://www.typescriptlang.org/", title: "TS 公式" },
     ],
   });
+  console.log(`  → id=${ts.id} slug=${ts.slug}`);
   call('store.put("rust", { ... })');
   await store.put("rust", {
     content:
@@ -96,8 +97,8 @@ npm と相互運用でき、型定義 (.d.ts) で既存 JS を活用できる。
   });
 
   hr("getChunks — ページがどう分割されたか");
-  call(`store.getChunks(${tsId})`);
-  for (const c of store.getChunks(tsId)) {
+  call(`store.getChunks("${ts.id}")`);
+  for (const c of store.getChunks(ts.id)) {
     console.log(`  #${c.ordinal} [${c.headingPath ?? "-"}] ${c.text.slice(0, 40)}...`);
   }
 
